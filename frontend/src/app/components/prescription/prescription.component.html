@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Résultats de l'Analyse de l'Ordonnance</title>
+  <!-- Bootstrap Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/bootstrap-icons.min.css" rel="stylesheet">
+
+</head>
+<body>
+  <div class="container mt-5">
+    <div class="row mb-4">
+      <div class="col">
+        <h2 class="text-center">Résultats de l'Analyse de l'Ordonnance</h2>
+        <div class="alert alert-info">
+          <strong>Type de Document :</strong>
+          <span class="badge bg-primary ms-2" (click)="goToBulletin()">Bulletin de Soin</span>
+          <span class="badge bg-primary ms-2" (click)="goToPrescription()">Ordonnance</span>
+        </div>
+        <p class="text-muted">Fichier : <span class="fst-italic">Non spécifié</span></p>
+      </div>
+    </div>
+
+    <div class="prescription-container">
+      <!-- Pharmacy and Patient Info Header -->
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <div class="pharmacy-info">
+            <h3>Nom de Pharmacie</h3>
+            <p>Adresse</p>
+            <p>Téléphoone / Fax </p>
+            <p>Matricule Fisale</p>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="patient-info">
+            <div class="info-group">
+              <span class="info-label">ID Bénéficiaire:</span>
+              <div class="field-bordered"></div>
+            </div>
+            <div class="info-group">
+              <span class="info-label">Identité du malade:</span>
+              <div class="field-bordered"></div>
+            </div>
+            <div class="info-group">
+              <span class="info-label">Code du prescripteur:</span>
+              <div class="field-bordered"></div>
+            </div>
+            <div class="info-group">
+              <span class="info-label">Date de la prescription:</span>
+              <div class="field-bordered"></div>
+            </div>
+            <div class="info-group">
+              <span class="info-label">Régime:</span>
+              <div class="field-bordered"></div>
+            </div>
+            <div class="info-group">
+              <span class="info-label">Date de dispensation:</span>
+              <div class="field-bordered"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Title Box -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="title-box">
+            Exécution d'une ordonnance
+          </div>
+        </div>
+      </div>
+
+      <!-- Executor Info -->
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <div class="info-group">
+            <span class="info-label">Exécuteur:</span>
+            <div class="field-bordered"></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="info-group">
+            <span class="info-label">Référence CNAM du pharmacien:</span>
+            <div class="field-bordered"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prescription Table -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <table class="prescription-table">
+            <thead>
+              <tr>
+                <th>Code PCT</th>
+                <th>Produit</th>
+                <th>Forme</th>
+                <th>Qte</th>
+                <th>PUV</th>
+                <th>Mt. Perçu</th>
+                <th>N.I.O</th>
+                <th>PR/Lot</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr class="total-row">
+                <td colspan="5" class="text-end">Total</td>
+                <td></td>
+                <td colspan="2"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Total Amount in Words -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="info-group">
+            <span class="info-label">Arrêtée à la somme de:</span>
+            <div class="field-bordered"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Thank You Message -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="thank-you-message">
+            &lt;&lt; Merci et bon rétablissement &gt;&gt;
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer with Barcode and Stamps -->
+      <div class="row mb-5">
+
+        <div class="col-md-4 ">
+          <div class="pharmacy-stamp">
+            <p>Nom de Pharmacie</p>
+            <p>Adresse</p>
+            <p>Tél / Fax</p>
+            <p>Matricule Fisc.</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="row mb-5">
+        <div class="col-12 text-center">
+          <button class="btn btn-primary me-2">
+            <i class="bi bi-printer"></i> Imprimer les Données
+          </button>
+          <button class="btn btn-danger">
+            <i class="bi bi-flag"></i> Signaler un Problème
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  
+</body>
+</html>

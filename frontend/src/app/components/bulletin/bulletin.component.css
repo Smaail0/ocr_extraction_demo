@@ -1,0 +1,415 @@
+/* Main Form Container */
+.container {
+  max-width: 800px;
+  margin: 20px auto;
+}
+
+.cnam-form {
+  border: 2px solid #009a44;
+  background-color: white;
+  position: relative;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+/* Watermark */
+.watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.1;
+  width: 300px;
+  height: 300px;
+
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Header */
+.header {
+  display: flex;
+  padding: 15px;
+  position: relative;
+  border-bottom: 1px solid #009a44;
+}
+
+.title-container {
+  flex-grow: 1;
+  text-align: center;
+}
+
+.title-ar {
+  color: #009a44;
+  font-size: 18px;
+  margin-bottom: 5px;
+}
+
+.title-fr {
+  color: #009a44;
+  font-size: 16px;
+  font-weight: bold;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.ref-container {
+  width: 150px;
+  text-align: right;
+}
+
+.ref-box {
+  border: 1px solid #009a44;
+  padding: 5px;
+  min-height: 40px;
+}
+
+.ref-box .form-control {
+  border: none;
+  border-radius: 0;
+  padding: 2px;
+  height: 28px;
+}
+
+/* Form Sections */
+.form-section {
+  border-bottom: 1px solid #009a44;
+}
+
+.section-header {
+  background-color: #009a44;
+  color: white;
+  padding: 5px 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Identifiant Unique */
+.id-row {
+  display: flex;
+  border-bottom: 1px solid #009a44;
+}
+
+.id-label {
+  width: 25%;
+  padding: 5px;
+  border-right: 1px solid #009a44;
+  text-align: center;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.id-boxes {
+  width: 75%;
+  display: flex;
+}
+
+.id-box {
+  width: 8.33%;
+  border-right: 1px solid #009a44;
+  height: 30px;
+  text-align: center;
+  font-weight: bold;
+  border-radius: 0;
+  border-top: none;
+  border-bottom: none;
+}
+
+.id-box:last-child {
+  border-right: none;
+}
+
+/* Checkbox sections */
+.checkbox-row {
+  display: flex;
+  padding: 5px 10px;
+  border-bottom: 1px solid #009a44;
+  justify-content: space-around;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+}
+
+.checkbox-label {
+  color: #009a44;
+  font-weight: bold;
+  margin-right: 10px;
+}
+
+.checkbox-box {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Assured Info */
+.assure-info {
+  padding: 0 10px;
+}
+
+.assure-header {
+  display: flex;
+  justify-content: space-between;
+  color: #009a44;
+  font-weight: bold;
+  border-bottom: 1px solid #009a44;
+  padding: 5px 0;
+}
+
+.field-row {
+  display: flex;
+  margin: 10px 0;
+  align-items: center;
+}
+
+.field-label {
+  color: #009a44;
+  min-width: 120px;
+  font-weight: bold;
+}
+
+.field-dots {
+  flex-grow: 1;
+  margin: 0 10px;
+  position: relative;
+}
+
+.field-dots input {
+  border: none;
+  border-bottom: 1px dotted #009a44;
+  border-radius: 0;
+  background-color: transparent;
+  padding: 0 5px;
+  height: 30px;
+}
+
+.field-value-ar {
+  text-align: right;
+  min-width: 100px;
+  color: #009a44;
+  font-weight: bold;
+}
+
+/* Patient Section */
+.malade-options {
+  display: flex;
+  padding: 5px;
+  border-bottom: 1px solid #009a44;
+}
+
+.malade-option {
+  flex: 1;
+  border: 1px solid #009a44;
+  margin: 5px;
+  padding: 5px;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.malade-option:hover {
+  background-color: #f0f8f4;
+}
+
+.malade-option.selected {
+  background-color: #e6f4eb;
+}
+
+.option-title {
+  font-size: 12px;
+  color: #009a44;
+  text-align: center;
+}
+
+/* Signature */
+.signature-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 10px 40px;
+  color: #009a44;
+  font-weight: bold;
+  border-bottom: 1px solid transparent;
+}
+
+/* Important Notice */
+.important-notice {
+  background-color: #009a44;
+  color: white;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.notice-fr {
+  width: 48%;
+  font-size: 12px;
+}
+
+.notice-ar {
+  width: 48%;
+  text-align: right;
+  font-size: 12px;
+}
+
+/* Form Buttons */
+.form-buttons {
+  text-align: center;
+}
+
+/* Form control overrides */
+.form-control:focus {
+  box-shadow: none;
+  border-color: #009a44;
+}
+/* Additional styles for edit mode and buttons */
+.form-control[readonly] {
+  background-color: transparent;
+  cursor: default;
+}
+
+.form-control:not([readonly]) {
+  background-color: #fcfffd;
+  border-color: #80ca9c;
+  box-shadow: 0 0 0 0.1rem rgba(0, 154, 68, 0.25);
+}
+
+/* Status alerts */
+.alert {
+  border-radius: 0;
+  margin-bottom: 15px;
+}
+
+.alert-warning {
+  background-color: #fffced;
+  border-color: #ffecb5;
+  color: #856404;
+}
+
+.alert-success {
+  background-color: #e6f4eb;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+/* Control buttons */
+.form-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn-primary {
+  background-color: #009a44;
+  border-color: #008a3c;
+}
+
+.btn-primary:hover {
+  background-color: #008038;
+  border-color: #007030;
+}
+
+.btn-success {
+  background-color: #28a745;
+  border-color: #28a745;
+}
+
+.btn-success:hover {
+  background-color: #218838;
+  border-color: #1e7e34;
+}
+
+/* Edit mode highlighting */
+.field-dots input:not([readonly]) {
+  background-color: #f8fffc;
+}
+.nav-tabs .nav-link {
+  cursor: pointer;
+}
+
+/* Print specific styles */
+@media print {
+  .form-buttons, .alert {
+    display: none !important;
+  }
+  
+  body {
+    margin: 0;
+    padding: 0;
+  }
+  
+  .container {
+    max-width: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .cnam-form {
+    border: 1px solid #009a44;
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: #fff;
+    border: 1px solid #000;
+    width: 16px;
+    height: 16px;
+    position: relative;
+  }
+  
+  input[type="checkbox"]:checked::after {
+    content: "✓";
+    position: absolute;
+    top: -3px;
+    left: 2px;
+    font-size: 14px;
+  }
+}
+
+/* Responsiveness */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+  }
+  
+  .ref-container {
+    width: 100%;
+    text-align: left;
+    margin-top: 10px;
+  }
+  
+  .field-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .field-value-ar {
+    text-align: left;
+    margin-top: 5px;
+  }
+  
+  .important-notice {
+    flex-direction: column;
+  }
+  
+  .notice-fr, .notice-ar {
+    width: 100%;
+    text-align: left;
+  }
+  
+  .notice-ar {
+    margin-top: 10px;
+  }
+}

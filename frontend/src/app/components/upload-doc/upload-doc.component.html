@@ -1,0 +1,100 @@
+<div class="container  py-5" >
+    <div class="card shadow-lg">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 class="h5 mb-0">Upload New Document</h2>
+
+      </div>
+  
+      <div class="card-body">
+        <!-- Upload Section -->
+        <div class="mb-4">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">Document Files</h5>
+            <span class="text-muted">{{ uploadFiles.length }}/{{ MAX_FILES }} files</span>
+          </div>
+  
+          <!-- Drop Area -->
+          <div 
+            id="drop-area"
+            class="border border-2 border-dashed rounded p-4 text-center mb-3"
+            [class.disabled]="!canAddMoreFiles"
+            (dragover)="onDragOver($event)"
+            (dragleave)="onDragLeave($event)"
+            (drop)="onDrop($event)"
+          >
+            <div [class.text-muted]="!canAddMoreFiles">
+              <div class="mb-2">
+                <i class="bi bi-upload fs-1"></i>
+              </div>
+              <p *ngIf="canAddMoreFiles">Drag and drop files here or</p>
+              <p *ngIf="!canAddMoreFiles" class="text-danger">Maximum files reached ({{ MAX_FILES }})</p>
+              <label *ngIf="canAddMoreFiles" class="btn btn-outline-primary btn-sm">
+                Browse Files
+                <input type="file" (change)="onFileSelected($event)" multiple class="d-none">
+              </label>
+            </div>
+          </div>
+  
+          <!-- Requirements -->
+          <div class="mb-4 text-muted small">
+            <strong>Requirements:</strong>
+            <ul class="mb-0">
+              <li>Maximum {{ MAX_FILES }} files</li>
+              <li>Select document type for each file</li>
+              <li>Accepted formats: PDF, JPG, PNG</li>
+            </ul>
+          </div>
+  
+          <!-- Selected Files -->
+          <div *ngIf="uploadFiles.length > 0">
+            <h6>Selected Files</h6>
+            <ul class="list-group">
+              <li 
+                class="list-group-item d-flex justify-content-between align-items-start"
+                *ngFor="let uploadFile of uploadFiles; let i = index"
+              >
+                <div class="d-flex align-items-center gap-3">
+                  <i class="bi bi-file-earmark-text fs-4"></i>
+                  <div>
+                    <div>{{ uploadFile.file.name }}</div>
+                    <small class="text-muted">{{ formatFileSize(uploadFile.file.size) }}</small>
+                  </div>
+                </div>
+  
+                <div class="d-flex align-items-center gap-2">
+
+                  <button class="btn btn-sm btn-outline-danger" (click)="removeFile(i)">
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+  
+        <!-- Progress Bar -->
+        <div *ngIf="isUploading" class="mb-4">
+          <label class="form-label">Extract Progress</label>
+          <div class="progress">
+            <div class="progress-bar" role="progressbar" [style.width.%]="uploadProgress">
+              {{ uploadProgress }}%
+            </div>
+          </div>
+        </div>
+      </div>
+  
+      <!-- Footer -->
+      <div class="card-footer text-end">
+        <button class="btn btn-secondary me-2" (click)="closeSection()">Cancel</button>
+        <button 
+          class="btn btn-primary"
+          (click)="uploadDocuments()"
+          [disabled]="isSubmitDisabled"
+        >
+          <span *ngIf="!isUploading" >Extract Text</span>
+          <span *ngIf="isUploading">Extracting...</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  

@@ -1,0 +1,277 @@
+<div class="container">
+  <div *ngIf="files.length === 0" class="alert alert-info">
+    No document data to display. Please upload and extract first.
+  </div>
+  <!-- Document extraction moved to aside -->
+  <aside class="document-extraction mb-3" *ngIf="files.length > 0">
+    <details>
+      <summary><h5>Extracted Documents</h5></summary>
+      <div class="card shadow-sm p-2">
+     <ul class="nav nav-tabs nav-sm mb-2">
+       <li class="nav-item" *ngFor="let doc of files; let i = index">
+         <a class="nav-link py-1 px-2"
+            [class.active]="i === selectedIndex"
+            (click)="selectTab(i)">
+            {{ doc.header.documentType | titlecase }}
+         </a>
+       </li>
+     </ul>
+          <div class="card-body p-2">
+             <small><strong>Type:</strong> {{ files[selectedIndex].header.documentType }}</small>
+             <span *ngIf="files[selectedIndex].header.dossierId">
+               &nbsp;|&nbsp;<strong>Réf. Dossier:</strong> {{ files[selectedIndex].header.dossierId }}
+             </span>
+           </div>
+        <!-- NAV TABS: show each documentType, call selectTab -->
+        <ul class="nav nav-tabs nav-sm mb-2">
+            <li class="nav-item" *ngFor="let f of files; let i = index">
+              <a class="nav-link py-1 px-2"
+                 [class.active]="i === selectedIndex"
+                 (click)="selectTab(i)">
+                {{ f.documentType | titlecase }}
+              </a>
+            </li>
+          </ul>
+          <!-- optional: show which tab is active -->
+          <div class="card-body p-2">
+          <small><strong>Type:</strong> {{ files[selectedIndex].documentType }}</small>
+          </div>
+      </div>
+    </details>
+  </aside>
+  <div class="cnam-form position-relative">
+    <!-- Watermark -->
+    <div class="watermark" style="background-image: url('/api/placeholder/300/300');"></div>
+    
+
+    <div class="container py-3">
+      <!-- Control Buttons - Refined -->
+      <div class="form-buttons mb-3">
+        <button type="button" 
+                class="btn btn-primary btn-sm" 
+                (click)="toggleEditMode()">
+          <i class="bi bi-pencil-square me-1"></i>
+          {{ isEditMode ? 'Save Changes' : 'Verify Data' }}
+        </button>
+      </div>
+
+      <!-- Status Alert -->
+      <div *ngIf="showStatusAlert" class="alert py-2" [ngClass]="{'alert-warning': isEditMode, 'alert-success': !isEditMode && showStatusAlert}">
+        <small *ngIf="isEditMode">Edit mode enabled. Please verify and correct any fields as needed.</small>
+        <small *ngIf="!isEditMode && showStatusAlert">Changes saved successfully!</small>
+      </div>
+
+      <!-- Header -->
+      <div class="header">
+        <div class="title-container">
+          <div class="title-ar">الصندوق الوطني للتأمين على المرض</div>
+          <p class="title-fr">BULLETIN DE REMBOURSEMENT<br>DES FRAIS DE SOINS</p>
+        </div>
+        <div class="ref-container">
+          <div>Réf. Dossier</div>
+          <div class="ref-box">
+            <input type="text" [(ngModel)]="formData.refDossier" name="refDossier" class="form-control" [readonly]="!isEditMode">
+          </div>
+        </div>
+      </div>
+
+      <!-- Rest of the form remains unchanged -->
+      <!-- Assure Social Section -->
+      <div class="form-section">
+        <div class="section-header">
+          <div>À REMPLIR PAR L'ASSURÉ SOCIAL</div>
+          <div>يعمر من طرف المضمون الاجتماعي</div>
+        </div>
+
+        <!-- Identifiant Unique - Refined to match field-dots style -->
+        <div class="id-row">
+          <div class="id-label">
+            <span>IDENTIFIANT<br>UNIQUE</span>
+            <span>المعرف الوحيد</span>
+          </div>
+          <div class="field-dots" style="width: 75%; padding: 0 15px; margin: 0;">
+            <input type="text" class="form-control" maxlength="12" 
+                   [(ngModel)]="formData.identifiantUnique" 
+                   name="identifiantUnique" 
+                   [readonly]="!isEditMode"
+                   style="height: 30px; width: 100%;">
+          </div>
+        </div>
+
+        <!-- Checkbox Section -->
+        <div class="checkbox-row">
+          <div class="checkbox-item">
+            <span class="checkbox-label">CNSS</span>
+            <div class="checkbox-box">
+              <input type="checkbox" [(ngModel)]="formData.cnss" name="cnss" [disabled]="!isEditMode" (change)="onCheckboxChange('cnss')">
+            </div>
+          </div>
+          <div class="checkbox-item">
+            <span class="checkbox-label">CNRPS</span>
+            <div class="checkbox-box">
+              <input type="checkbox" [(ngModel)]="formData.cnrps" name="cnrps" [disabled]="!isEditMode" (change)="onCheckboxChange('cnrps')">
+            </div>
+          </div>
+          <div class="checkbox-item">
+            <span class="checkbox-label">Convention bilatérale</span>
+            <div class="checkbox-box">
+              <input type="checkbox" [(ngModel)]="formData.convbi" name="convbi" [disabled]="!isEditMode" (change)="onCheckboxChange('convbi')">
+            </div>
+          </div>
+        </div>
+
+        <!-- L'assuré social -->
+        <div class="assure-info">
+          <div class="assure-header">
+            <div>L'assuré social</div>
+            <div>المضمون الاجتماعي</div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-label">Prénom :</div>
+            <div class="field-dots">
+              <input type="text" [(ngModel)]="formData.prenom" name="prenom" class="form-control" [readonly]="!isEditMode">
+            </div>
+            <div class="field-value-ar">الاسم :</div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-label">Nom :</div>
+            <div class="field-dots">
+              <input type="text" [(ngModel)]="formData.nom" name="nom" class="form-control" [readonly]="!isEditMode">
+            </div>
+            <div class="field-value-ar">اللقب :</div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-label">Adresse :</div>
+            <div class="field-dots">
+              <input type="text" [(ngModel)]="formData.adresse" name="adresse" class="form-control" [readonly]="!isEditMode">
+            </div>
+            <div class="field-value-ar">العنوان :</div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-label">Code postal :</div>
+            <div class="field-dots">
+              <input type="text" [(ngModel)]="formData.codePostal" name="codePostal" class="form-control" [readonly]="!isEditMode">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Le malade -->
+      <div class="form-section">
+        <div class="section-header">
+          <div>Le malade</div>
+          <div>المريض</div>
+        </div>
+
+        <div class="malade-section">
+          <div class="malade-options">
+            <div class="malade-option" 
+                 [class.selected]="formData.assureSocial" 
+                 (click)="setPatientType('assureSocial')">
+              <div class="option-title">
+                L'assuré social<br>المضمون الاجتماعي
+                <div class="checkbox-box">
+                  <!-- Checkbox is now only for visual feedback -->
+                  <input type="checkbox" [(ngModel)]="formData.assureSocial" name="assureSocial" [disabled]="!isEditMode">
+                </div>
+              </div>
+            </div>
+            <div class="malade-option" 
+                 [class.selected]="formData.conjoint" 
+                 (click)="setPatientType('conjoint')">
+              <div class="option-title">
+                Le conjoint<br>الزوج(ة)
+                <div class="checkbox-box">
+                  <input type="checkbox" [(ngModel)]="formData.conjoint" name="conjoint" [disabled]="!isEditMode">
+                </div>
+              </div>
+            </div>
+            <div class="malade-option" 
+                 [class.selected]="formData.enfant" 
+                 (click)="setPatientType('enfant')">
+              <div class="option-title">
+                L'enfant (*)<br>الابن (*)
+                <div class="checkbox-box">
+                  <input type="checkbox" [(ngModel)]="formData.enfant" name="enfant" [disabled]="!isEditMode">
+                </div>
+              </div>
+            </div>
+            <div class="malade-option" 
+                 [class.selected]="formData.ascendant" 
+                 (click)="setPatientType('ascendant')">
+              <div class="option-title">
+                L'ascendant (**)<br>الأصل (**)
+                <div class="checkbox-box">
+                  <input type="checkbox" [(ngModel)]="formData.ascendant" name="ascendant" [disabled]="!isEditMode">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding: 0 10px;">
+            <div style="font-size: 10px; color: #009a44; text-align: right; margin: 5px 0;">
+              (*) 01 = الولد الأول, 02 = الثاني, 03 = الثالث... الخ
+            </div>
+            <div style="font-size: 10px; color: #009a44; text-align: right; margin: 5px 0;">
+              (**) 01 = الأب, 02 = الأم
+            </div>
+
+            <div class="field-row">
+              <div class="field-label">PRÉNOM :</div>
+              <div class="field-dots">
+                <input type="text" [(ngModel)]="formData.prenomMalade" name="prenomMalade" class="form-control" [readonly]="!isEditMode">
+              </div>
+              <div class="field-value-ar">الاسم :</div>
+            </div>
+
+            <div class="field-row">
+              <div class="field-label">NOM :</div>
+              <div class="field-dots">
+                <input type="text" [(ngModel)]="formData.nomMalade" name="nomMalade" class="form-control" [readonly]="!isEditMode">
+              </div>
+              <div class="field-value-ar">اللقب :</div>
+            </div>
+
+            <div class="field-row">
+              <div class="field-label">DATE DE NAISSANCE :</div>
+              <div class="field-dots">
+                <input type="text" [(ngModel)]="formData.dateNaissance" name="dateNaissance" class="form-control" [readonly]="!isEditMode">
+              </div>
+              <div class="field-value-ar">تاريخ الولادة :</div>
+            </div>
+
+            <div class="field-row">
+              <div class="field-label">N° DU TEL PORTABLE</div>
+              <div class="field-dots">
+                <input type="text" [(ngModel)]="formData.numTel" name="numTel" class="form-control" [readonly]="!isEditMode">
+              </div>
+              <div class="field-value-ar">رقم الهاتف الجوال</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signature -->
+      <div class="signature-row">
+        <div>SIGNATURE DE L'ASSURÉ</div>
+        <div>إمضاء المضمون الاجتماعي</div>
+      </div>
+
+      <!-- Important Notice -->
+      <div class="important-notice">
+        <div class="notice-fr">
+          <strong>Très important:</strong> Veuillez déposer ce formulaire au centre régional ou local le plus proche de
+          votre domicile dans un délai ne dépassant pas les 60 jours à date des soins.
+        </div>
+        <div class="notice-ar">
+          <strong>هام جدا:</strong> تسلم هذه البطاقة إلى أقرب مركز جهوي أو محلي لإقامتكم خلال مدة لا تفوق 60 يوما من
+          تاريخ العلاج.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
