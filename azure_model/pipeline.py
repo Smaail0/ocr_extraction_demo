@@ -130,12 +130,6 @@ def classify_form(
     return best[0]
 
 def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
-    """
-    1) drop bytes to a temp file
-    2) choose model via classify_form
-    3) call analyze_document
-    4) extract fields → minimal dict
-    """
     suffix = Path(filename).suffix or ".pdf"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(file_bytes)
@@ -156,35 +150,47 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
     # run OCR
     result = analyze_document(tmp_path, model_id=model_id, pages=None)
 
-    # build minimal JSON
     doc = result.documents[0]
-    f = doc.fields
+    f   = doc.fields
+
+    # helper to pull text or return None
+    def txt(key: str) -> str | None:
+        fld = f.get(key)
+        val = getattr(fld, "value", None)
+        return val if isinstance(val, str) else None
+
+    # helper to pull a checkbox state (value will be a bool)
+    def chk(key: str) -> bool:
+        fld = f.get(key)
+        val = getattr(fld, "value", None)
+        return bool(val) if isinstance(val, bool) else False
+
     parsed = {
         "header": {
             "documentType": doc.doc_type,
-            "dossierId":    f.get("id_dossier").value if "id_dossier" in f else None,
+            "dossierId":    txt("id_dossier"),
         },
         "insured": {
-            "uniqueId":          f.get("id_unique").value,
-            "cnrpsChecked":      f.get("cnrps_check").value,
-            "cnssChecked":       f.get("cnss_check").value,
-            "conventionChecked": f.get("convention_check").value,
-            "firstName":         f.get("prenom_assure").value,
-            "lastName":          f.get("nom_assure").value,
-            "address":           f.get("adresse_assure").value,
-            "postalCode":        f.get("code_postal").value,
+            "uniqueId":          txt("id_unique"),
+            "cnrpsChecked":      chk("cnrps_check"),
+            "cnssChecked":       chk("cnss_check"),
+            "conventionChecked": chk("convention_check"),
+            "firstName":         txt("prenom_assure"),
+            "lastName":          txt("nom_assure"),
+            "address":           txt("adresse_assure"),
+            "postalCode":        txt("code_postal"),
         },
         "patient": {
-            "firstName": f.get("prenom_malade").value,
-            "lastName":  f.get("nom_malade").value,
-            "birthDate": f.get("date_naissance_malade").value,
-            "isChild":   f.get("enfant").value,
+            "firstName": txt("prenom_malade"),
+            "lastName":  txt("nom_malade"),
+            "birthDate": txt("date_naissance_malade"),
+            "isChild":   chk("enfant"),
         }
     }
 
-    # cleanup
     tmp_path.unlink()
     return parsed
+
 # ─── MAIN ───────────────────────────────────────────────────────────────────
 
 def main():

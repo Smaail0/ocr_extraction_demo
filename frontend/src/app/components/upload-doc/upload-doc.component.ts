@@ -1,11 +1,10 @@
-//Upload Document
-
-import { CommonModule } from '@angular/common';
 import { Component, ElementRef, EventEmitter, Output, ViewChild } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { forkJoin, of } from 'rxjs';
+import { catchError, finalize, tap } from 'rxjs/operators';
 import { DocumentsService } from '../../services/documents.service';
-import { firstValueFrom } from 'rxjs';
 
 interface UploadFile {
   file: File;
@@ -17,7 +16,7 @@ interface UploadFile {
   standalone: true,
   imports: [FormsModule, CommonModule],
   templateUrl: './upload-doc.component.html',
-  styleUrl: './upload-doc.component.css'
+  styleUrls: ['./upload-doc.component.css']
 })
 export class UploadDocComponent {
   @ViewChild('dropArea') dropArea!: ElementRef;
@@ -43,127 +42,119 @@ export class UploadDocComponent {
     return this.uploadFiles.length === 0 || this.isUploading;
   }
 
-  
-
   onDragOver(event: DragEvent): void {
     event.preventDefault();
-    if (this.dropArea?.nativeElement && this.canAddMoreFiles) {
-      this.dropArea.nativeElement.classList.add('active');
-    }
+    if (this.canAddMoreFiles) this.dropArea.nativeElement.classList.add('active');
   }
 
   onDragLeave(event: DragEvent): void {
     event.preventDefault();
-    this.dropArea?.nativeElement.classList.remove('active');
+    this.dropArea.nativeElement.classList.remove('active');
   }
 
   onDrop(event: DragEvent): void {
     event.preventDefault();
-    this.dropArea?.nativeElement.classList.remove('active');
-
-    if (!this.canAddMoreFiles) {
-      this.showError(`Maximum ${this.MAX_FILES} files allowed`);
-      return;
-    }
-
+    this.dropArea.nativeElement.classList.remove('active');
+    if (!this.canAddMoreFiles) return this.showError(`Max ${this.MAX_FILES} files allowed`);
     const files = event.dataTransfer?.files;
-    if (files) {
-      this.handleFiles(files);
-    }
+    if (files) this.handleFiles(files);
   }
 
   onFileSelected(event: any): void {
+    const inp = event.target as HTMLInputElement;
+    const files = inp.files;
     if (!this.canAddMoreFiles) {
-      this.showError(`Maximum ${this.MAX_FILES} files allowed`);
-      event.target.value = '';
+      this.showError(`Max ${this.MAX_FILES} files allowed`);
+      inp.value = '';
       return;
     }
-
-    const files = event.target.files;
-    if (files) {
-      this.handleFiles(files);
-    }
-
-    event.target.value = '';
+    if (files) this.handleFiles(files);
+    inp.value = '';
   }
 
-  handleFiles(files: FileList): void {
-    const remainingSlots = this.MAX_FILES - this.uploadFiles.length;
-    const filesToAdd = Math.min(files.length, remainingSlots);
-
-    for (let i = 0; i < filesToAdd; i++) {
-      const file = files[i];
-      if (!this.ALLOWED_TYPES.includes(file.type)) {
-        this.showError(`Unsupported file type: ${file.name}`);
+  private handleFiles(files: FileList) {
+    const slots = this.MAX_FILES - this.uploadFiles.length;
+    for (let i = 0; i < Math.min(files.length, slots); i++) {
+      const f = files[i];
+      if (!this.ALLOWED_TYPES.includes(f.type)) {
+        this.showError(`Unsupported: ${f.name}`);
         continue;
       }
-
-      const isDuplicate = this.uploadFiles.some(
-        f => f.file.name === file.name && f.file.size === file.size
-      );
-      if (isDuplicate) {
-        this.showError(`Duplicate file ignored: ${file.name}`);
+      if (this.uploadFiles.some(u => u.file.name === f.name && u.file.size === f.size)) {
+        this.showError(`Duplicate ignored: ${f.name}`);
         continue;
       }
-
-      this.uploadFiles.push({ file, id: this.generateUniqueId() });
+      this.uploadFiles.push({ file: f, id: this.generateUniqueId() });
     }
-
-    if (files.length > remainingSlots) {
-      this.showError(`Only added ${filesToAdd} file(s). Maximum of ${this.MAX_FILES} allowed.`);
+    if (files.length > slots) {
+      this.showError(`Only added ${slots} file(s); limit ${this.MAX_FILES}.`);
     }
   }
 
-  removeFile(index: number): void {
-    this.uploadFiles.splice(index, 1);
+  removeFile(i: number) {
+    this.uploadFiles.splice(i, 1);
   }
 
-  showError(message: string): void {
-    console.error(message); // You can replace this with a toast or snackbar
+  private showError(msg: string) {
+    alert(msg);
   }
 
-  closeSection(): void {
+  closeSection() {
     this.close.emit(false);
   }
 
-  async uploadDocuments(): Promise<void> {
+  private generateUniqueId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+
+  /**
+   * Called when user clicks “Extract Text”
+   */
+  uploadDocuments(): void {
     if (this.isSubmitDisabled) return;
-  
     this.isUploading = true;
     this.uploadProgress = 0;
-  
-    const files = this.uploadFiles.map(f => f.file);
-  
-    try {
-      const result = await firstValueFrom(this.documentsService.uploadDocuments(files));
-      console.log('Upload result:', result);
-      this.uploadProgress = 100;
-      this.processExtractedDocuments();
-    } catch (error: any) {
-      this.showError('Upload failed: ' + (error?.message || 'Unknown error'));
-    } finally {
-      this.isUploading = false;
-    }
-  }
-  
 
-  processExtractedDocuments(): void {
-    this.close.emit(true);
+    // kick off one OCR call per file
+    const calls = this.uploadFiles.map((u, idx) =>
+      this.documentsService.processBulletin(u.file).pipe(
+        tap(() => {
+          // increment progress as each completes
+          this.uploadProgress = Math.round((idx + 1) / this.uploadFiles.length * 100);
+        }),
+        catchError(err => {
+          console.error('OCR failed for', u.file.name, err);
+          return of(null);   // swallow errors so all Observables complete
+        })
+      )
+    );
 
-    const files = this.uploadFiles.map(file => ({
-      name: file.file.name,
-      id: file.id
-    }));
-
-    if (files.length === 1) {
-      this.router.navigate([`extracted/${files[0].id}`], { state: { files } });
-    } else {
-      this.router.navigate(['extracted/tabs'], { state: { files } });
-    }
-  }
-
-  generateUniqueId(): string {
-    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+    forkJoin(calls).pipe(
+      finalize(() => this.isUploading = false)
+    ).subscribe({
+      next: results => {
+        const successful = results.filter(r => r !== null);
+        if (!successful.length) {
+          return alert('All OCR requests failed');
+        }
+        // build a minimal array of { documentType, dossierId, ... } objects
+        // successful is already that parsed JSON from your backend
+        if (successful.length === 1) {
+          this.router.navigate([`extracted/${this.uploadFiles[0].id}`], {
+            state: { files: successful }
+          });
+        } else {
+          this.router.navigate(['extracted/tabs'], {
+            state: { files: successful }
+          });
+        }
+        this.close.emit(true);
+      },
+      error: err => {
+        console.error('Unexpected error in OCR pipeline', err);
+        alert('Extraction error, please try again.');
+      }
+    });
   }
 
   getFileIcon(file: File): string {
@@ -173,12 +164,12 @@ export class UploadDocComponent {
   }
 
   formatFileSize(size: number): string {
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    if (size < 1024)             return `${size} B`;
+    if (size < 1024 * 1024)      return `${(size/1024).toFixed(1)} KB`;
+    return `${(size/(1024*1024)).toFixed(1)} MB`;
   }
 
-  trackById(index: number, item: UploadFile): string {
+  trackById(_: number, item: UploadFile) {
     return item.id;
   }
 }

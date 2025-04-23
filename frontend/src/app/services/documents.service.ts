@@ -21,7 +21,6 @@ export class DocumentsService {
     );
   }
   
-
   getBulletinById(id: number): Observable<any> {
     return this.http.get(`${this.apiUrl}/bulletin/${id}`).pipe(
       catchError(this.handleError(`Error fetching bulletin with ID ${id}`))
@@ -73,7 +72,7 @@ export class DocumentsService {
         catchError(this.handleError('Error processing bulletin'))
       );
   }
-
+  
   private handleError(message: string) {
     return (error: HttpErrorResponse) => {
       console.error(`${message}:`, error);

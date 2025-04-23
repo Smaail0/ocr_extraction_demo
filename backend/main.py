@@ -28,10 +28,6 @@ app.add_middleware(
 
 @app.post("/bulletin/parse")
 async def parse_bulletin(file: UploadFile = File(...)):
-    """
-    Receives one file, runs the Azure OCR pipeline in a threadpool,
-    and returns the parsed JSON.
-    """
     # read file bytes
     contents = await file.read()
     # call your azure wrapper

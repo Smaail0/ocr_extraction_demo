@@ -50,15 +50,15 @@ export class BulletinComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    const nav = this.router.getCurrentNavigation();
-    const state = nav?.extras.state as { files?: any[] };
-    if (state?.files) {
-      this.files = state.files;
-      this.selectTab(0);
-    } else {
-      // optionally handle deep‑link or show “no data”
-      console.warn('No OCR data passed; show upload screen first.');
-    }
+  // prefer Angular Navigation state, fallback to native history.state
+  const nav = this.router.getCurrentNavigation()?.extras.state;
+  this.files = nav?.['files'] ?? (history.state.files ?? []);
+  if (this.files.length) {
+    this.selectTab(0);
+  } else {
+    // no data → redirect back
+    this.router.navigate(['/']);
+  }
   }
 
   /** Populate the formData and identifiant array from a parsed document */

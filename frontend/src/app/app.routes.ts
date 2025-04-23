@@ -4,10 +4,20 @@ import { UploadDocComponent } from './components/upload-doc/upload-doc.component
 import { BulletinComponent }   from './components/bulletin/bulletin.component';
 
 export const routes: Routes = [
-  { path: '', component: UploadDocComponent, pathMatch: 'full' },
-  { path: 'bulletin', component: BulletinComponent },
-  { path: 'bulletin/:id', component: BulletinComponent },
-  { path: '**', redirectTo: '' },
+  // Upload screen
+  { path: '',                  component: UploadDocComponent, pathMatch: 'full' },
+
+  // Single-document view
+  { path: 'extracted/:id',     component: BulletinComponent },
+
+  // Multi-document tabs view
+  { path: 'extracted/tabs',    component: BulletinComponent },
+
+  // Legacy “bulletin” alias → go to the tabs view
+  { path: 'bulletin',          redirectTo: 'extracted/tabs', pathMatch: 'full' },
+
+  // Catch-all
+  { path: '**',                redirectTo: '' }
 ];
 
 @NgModule({

@@ -114,46 +114,46 @@ export class UploadComponent {
   }
 
   /** Called when user clicks “Extract Text” */
-  uploadDocuments() {
-    if (this.uploadFiles.length === 0) {
-      return this.showError('Please select at least one file');
-    }
-    if (this.uploadFiles.some(f => !f.documentType)) {
-      return this.showError('Please select a document type for each file');
-    }
+uploadDocuments(): void {
+  if (!this.uploadFiles.length) {
+    return alert('Please select at least one file');
+  }
+  if (this.uploadFiles.some(f => !f.documentType)) {
+    return alert('Please select a document type for each file');
+  }
 
-    this.isUploading = true;
-    this.uploadProgress = 0;
+  this.isUploading = true;
+  this.uploadProgress = 0;
 
-    const calls = this.uploadFiles.map((u, idx) =>
-      this.documentsService.processBulletin(u.file).pipe(
-        tap(() => {
-          this.uploadProgress = Math.round(((idx + 1) / this.uploadFiles.length) * 100);
-        }),
-        catchError(err => {
-          console.error('OCR failed for', u.file.name, err);
-          return of(null);
-        })
-      )
-    );
+  const ocrCalls = this.uploadFiles.map((u, idx) =>
+    this.documentsService.processBulletin(u.file).pipe(
+      tap(() => {
+        this.uploadProgress = Math.round(((idx + 1) / this.uploadFiles.length) * 100);
+      }),
+      catchError(err => {
+        console.error('OCR error for', u.file.name, err);
+        return of(null); // swallow so forkJoin still completes
+      })
+    )
+  );
 
-    forkJoin(calls)
-      .pipe(finalize(() => this.isUploading = false))
-      .subscribe(results => {
+  forkJoin(ocrCalls)
+    .pipe(finalize(() => this.isUploading = false))
+    .subscribe({
+      next: (results) => {
         const successful = results.filter(r => r !== null);
         if (!successful.length) {
           return alert('All OCR requests failed');
         }
-
-        // Navigate to /bulletin with parsed data in router state
-        this.router.navigate(['/bulletin'], {
-          state: { files: successful }
-        });
+        this.router.navigate(['/bulletin'], { state: { files: successful } });
         this.close.emit(true);
-      }, err => {
-        console.error('Unexpected error in OCR pipeline', err);
-        alert('Failed to extract text');
-      });
+      },
+      error: (err) => {
+        console.error('Unexpected OCR pipeline error', err);
+        alert('Failed to extract text, please try again.');
+      }
+      
+    });
   }
 
   getFileIcon(file: File): string {
