@@ -130,16 +130,24 @@ def classify_form(
     return best[0]
 
 def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
+    # 1) Drop bytes to a temp file
     suffix = Path(filename).suffix or ".pdf"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(file_bytes)
         tmp_path = Path(tmp.name)
 
-    # pick which model
+    # 2) Load header templates once the temp file is on disk
+    presc_hdr  = cv2.imread("assets/ordonnance_header1.png")
+    bullet_hdr = cv2.imread("assets/bulletin_de_soin_header1.png")
+    if presc_hdr is None or bullet_hdr is None:
+        raise RuntimeError("❌ Could not load header images – check your paths")
+
+    # 3) Classify form and pick the model
     form_key = classify_form(
         scan_path=tmp_path,
-        presc_hdr_img=cv2.imread("assets/ordonnance_header1.png"),
-        bullet_hdr_img=cv2.imread("assets/bulletin_de_soin_header1.png")
+        presc_hdr_img=presc_hdr,
+        bullet_hdr_img=bullet_hdr,
+        poppler=None       # or your Poppler path on Windows
     )
     model_id = (
         os.getenv("ORDONNANCE_MODEL_ID")
@@ -147,47 +155,52 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
         else os.getenv("BULLETIN_MODEL_ID")
     )
 
-    # run OCR
+    # 4) Perform OCR
     result = analyze_document(tmp_path, model_id=model_id, pages=None)
 
+    # 5) Pull out fields
     doc = result.documents[0]
     f   = doc.fields
 
-    # helper to pull text or return None
     def txt(key: str) -> str | None:
         fld = f.get(key)
-        val = getattr(fld, "value", None)
-        return val if isinstance(val, str) else None
+        if not fld:
+            return None
+        # Custom model returns its text under "valueString"
+        return fld.get("valueString") or fld.get("content")
 
-    # helper to pull a checkbox state (value will be a bool)
     def chk(key: str) -> bool:
         fld = f.get(key)
-        val = getattr(fld, "value", None)
-        return bool(val) if isinstance(val, bool) else False
+        if not fld:
+            return False
+        # Custom model returns “valueSelectionMark” = “selected”/“unselected”
+        sm = fld.get("valueSelectionMark")
+        return (sm or "").lower() == "selected"
 
     parsed = {
-        "header": {
-            "documentType": doc.doc_type,
-            "dossierId":    txt("id_dossier"),
-        },
-        "insured": {
-            "uniqueId":          txt("id_unique"),
-            "cnrpsChecked":      chk("cnrps_check"),
-            "cnssChecked":       chk("cnss_check"),
-            "conventionChecked": chk("convention_check"),
-            "firstName":         txt("prenom_assure"),
-            "lastName":          txt("nom_assure"),
-            "address":           txt("adresse_assure"),
-            "postalCode":        txt("code_postal"),
-        },
-        "patient": {
-            "firstName": txt("prenom_malade"),
-            "lastName":  txt("nom_malade"),
-            "birthDate": txt("date_naissance_malade"),
-            "isChild":   chk("enfant"),
-        }
+      "header": {
+        "documentType": doc.doc_type,
+        "dossierId":    txt("id_dossier")
+      },
+      "insured": {
+        "uniqueId":          txt("id_unique"),
+        "cnrpsChecked":      chk("cnrps_check"),
+        "cnssChecked":       chk("cnss_check"),
+        "conventionChecked": chk("convention_check"),
+        "firstName":         txt("prenom_assure"),
+        "lastName":          txt("nom_assure"),
+        "address":           txt("adresse_assure"),
+        "postalCode":        txt("code_postal")
+      },
+      "patient": {
+        "firstName": txt("prenom_malade"),
+        "lastName":  txt("nom_malade"),
+        "birthDate": txt("date_naissance_malade"),
+        "isChild":   chk("enfant")
+      }
     }
 
+    # 6) Cleanup
     tmp_path.unlink()
     return parsed
 

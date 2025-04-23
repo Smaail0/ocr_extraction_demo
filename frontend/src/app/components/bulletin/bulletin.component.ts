@@ -50,48 +50,63 @@ export class BulletinComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-  // prefer Angular Navigation state, fallback to native history.state
-  const nav = this.router.getCurrentNavigation()?.extras.state;
-  this.files = nav?.['files'] ?? (history.state.files ?? []);
-  if (this.files.length) {
+    // Try navigation state first, fallback to history.state
+    const navState = this.router.getCurrentNavigation()?.extras.state
+                   || history.state;
+    this.files = navState?.files || [];
+    if (!this.files.length) {
+      // nothing to show → send them back
+      this.router.navigate(['/']);
+      return;
+    }
     this.selectTab(0);
-  } else {
-    // no data → redirect back
-    this.router.navigate(['/']);
-  }
   }
 
-  /** Populate the formData and identifiant array from a parsed document */
-  populateForm(data: any): void {
+  /** Pull nested OCR result into your flat formData */
+  populateForm(parsed: any): void {
+    // 1) Set everything to your defaults based on the payload…
     this.formData = {
-      prenom:            data.prenom,
-      nom:               data.nom,
-      adresse:           data.adresse,
-      codePostal:        data.codePostal,
-      prenomMalade:      data.prenomMalade,
-      nomMalade:         data.nomMalade,
-      assureSocial:      data.assureSocial,
-      conjoint:          data.conjoint,
-      enfant:            data.enfant,
-      ascendant:         data.ascendant,
-      dateNaissance:     data.dateNaissance,
-      numTel:            data.numTel,
-      refDossier:        data.refDossier,
-      identifiantUnique: data.identifiantUnique,
-      cnss:              data.cnss,
-      cnrps:             data.cnrps,
-      convbi:            data.convbi,
-      patientType:       data.patientType
+      prenom:            parsed.insured.firstName    || '',
+      nom:               parsed.insured.lastName     || '',
+      adresse:           parsed.insured.address      || '',
+      codePostal:        parsed.insured.postalCode   || '',
+      refDossier:        parsed.header.dossierId     || '',
+      identifiantUnique: parsed.insured.uniqueId     || '',
+      cnss:              parsed.insured.cnssChecked  || false,
+      cnrps:             parsed.insured.cnrpsChecked || false,
+      convbi:            parsed.insured.conventionChecked || false,
+      prenomMalade:      parsed.patient.firstName    || '',
+      nomMalade:         parsed.patient.lastName     || '',
+      dateNaissance:     parsed.patient.birthDate    || '',
+      numTel:            '',
+      // initialize all four to false, we’ll flip exactly one on next step:
+      assureSocial:      false,
+      conjoint:          false,
+      enfant:            parsed.patient.isChild     || false,
+      ascendant:         false,
+      patientType:       parsed.patient.isChild ? 'enfant' : 'self'
     };
-
-    // annotate params to avoid implicit any
-    const idStr = data.identifiantUnique || '';
-    this.identifiant = Array.from(
-      { length: 12 },
-      (_: unknown, i: number) => idStr[i] || ''
-    );
+  
+    // 2) Now override exactly one of the four “who’s the patient” flags:
+    switch (this.formData.patientType) {
+      case 'self':
+        this.formData.assureSocial = true;
+        break;
+      case 'conjoint':
+        this.formData.conjoint = true;
+        break;
+      case 'enfant':
+        this.formData.enfant = true;
+        break;
+      case 'ascendant':
+        this.formData.ascendant = true;
+        break;
+    }
+  
+    // 3) Split the 12-digit ID into the little boxes
+    const s = this.formData.identifiantUnique;
+    this.identifiant = Array.from({ length: 12 }, (_, i) => s[i] || '');
   }
-
   /** Switch to a different parsed document tab */
   selectTab(index: number): void {
     this.selectedIndex = index;
