@@ -1,0 +1,25 @@
+# ─────────── OS / IDE ───────────
+.DS_Store
+.vscode/
+.idea/
+
+# ───────── Python ─────────
+# Byte-code
+__pycache__/
+*.py[cod]
+# Virtual envs
+env/
+venv/
+
+# Your root env file
+.env
+
+# Packaging
+*.egg-info/
+dist/
+build/
+
+# ───────── Frontend / Node ─────────
+node_modules/
+npm-debug.log*
+yarn-error.log*

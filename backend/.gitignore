@@ -1,0 +1,6 @@
+# Ignore backend’s own env
+.env
+
+# Python caches
+__pycache__/
+*.py[cod]
