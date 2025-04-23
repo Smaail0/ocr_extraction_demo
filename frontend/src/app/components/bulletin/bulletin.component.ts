@@ -18,6 +18,7 @@ export class BulletinComponent implements OnInit {
   selectedIndex = 0;
 
   formData = {
+    id: null as number | null,
     prenom: '',
     nom: '',
     adresse: '',
@@ -66,6 +67,7 @@ export class BulletinComponent implements OnInit {
   populateForm(parsed: any): void {
     // 1) Set everything to your defaults based on the payload…
     this.formData = {
+      id:                this.formData.id,
       prenom:            parsed.insured.firstName    || '',
       nom:               parsed.insured.lastName     || '',
       adresse:           parsed.insured.address      || '',
@@ -132,12 +134,32 @@ export class BulletinComponent implements OnInit {
     }
   }
 
-  /** Save changes and emit the verified data */
   saveChanges(): void {
+    // 1) leave edit mode & show the alert
     this.isEditMode = false;
     this.showStatusAlert = true;
-    this.dataVerified.emit(this.getCompleteFormData());
-    setTimeout(() => (this.showStatusAlert = false), 3000);
+  
+    // 2) build the corrected payload
+    const payload = this.getCompleteFormData();
+  
+    // 3) send it to the server
+    this.documentsService.saveBulletinData(payload).subscribe({
+      next: saved => {
+        // if this was a new POST, the backend will return its new `id`
+        // stash it into formData so future calls become PUTs:
+        this.formData.id = saved.id;
+  
+        // optional: replace your “Changes saved” alert with something fancier
+        console.log('Saved to DB:', saved);
+      },
+      error: err => {
+        console.error('Error saving:', err);
+        alert('Oops! Could not save your corrections. Please try again.');
+      }
+    });
+  
+    // 4) auto-hide the status message in 3 s
+    setTimeout(() => this.showStatusAlert = false, 3000);
   }
 
   onSubmit(): void {
@@ -154,7 +176,8 @@ export class BulletinComponent implements OnInit {
   private getCompleteFormData(): any {
     return {
       ...this.formData,
-      identifiantUnique: this.identifiant.join('')
+      identifiantUnique: this.identifiant.join(''),
+      id: this.formData.id,
     };
   }
 
