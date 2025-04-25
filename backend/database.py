@@ -4,7 +4,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:souissi11179494@localhost:5432/insurance_medical"
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:medall@localhost:5432/insurance_medical"
 
 # Create engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)

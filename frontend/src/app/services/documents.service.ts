@@ -11,7 +11,8 @@ export class DocumentsService {
 
   constructor(private http: HttpClient) {}
 
-  uploadDocuments(files: File[]): Observable<any> {
+  // Bulletin methods
+  uploadBulletins(files: File[]): Observable<any> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file)); // 'files' not 'files[]'
   
@@ -71,6 +72,86 @@ export class DocumentsService {
         tap(res => console.log('OCR result:', res)),
         catchError(this.handleError('Error processing bulletin'))
       );
+  }
+  
+  // Ordonnance methods
+  uploadOrdonnances(files: File[]): Observable<any> {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+  
+    return this.http.post(`${this.apiUrl}/ordonnance/upload`, formData).pipe(
+      tap(response => console.log('Upload success:', response)),
+      catchError(this.handleError('Error uploading ordonnances'))
+    );
+  }
+
+  getOrdonnanceById(id: number): Observable<any> {
+    return this.http.get(`${this.apiUrl}/ordonnance/${id}`).pipe(
+      catchError(this.handleError(`Error fetching ordonnance with ID ${id}`))
+    );
+  }
+
+  saveOrdonnanceData(data: any): Observable<any> {
+    if (data.id) {
+      return this.http.put(`${this.apiUrl}/ordonnance/${data.id}`, data).pipe(
+        tap(savedData => console.log('Ordonnance updated:', savedData)),
+        catchError(this.handleError('Error updating ordonnance'))
+      );
+    } else {
+      return this.http.post(`${this.apiUrl}/ordonnance/`, data).pipe(
+        tap(savedData => console.log('New ordonnance created:', savedData)),
+        catchError(this.handleError('Error creating ordonnance'))
+      );
+    }
+  }
+
+  getLatestOrdonnance(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/ordonnance/uploaded/latest`).pipe(
+      catchError(error => {
+        console.error('Error fetching latest ordonnance:', error);
+        return of({ filename: null, original_name: null, uploaded_at: null, exists: false });
+      })
+    );
+  }
+
+  getAllUploadedOrdonnances(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/ordonnance/uploaded/all`).pipe(
+      catchError(error => {
+        if (error.status === 404) {
+          return of([]);
+        }
+        return throwError(() => error);
+      })
+    );
+  }
+
+  processOrdonnance(file: File): Observable<any> {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    return this.http
+      .post<any>(`${this.apiUrl}/ordonnance/parse`, fd)
+      .pipe(
+        tap(res => console.log('OCR result:', res)),
+        catchError(this.handleError('Error processing ordonnance'))
+      );
+  }
+
+  getAllOrdonnances(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/ordonnance/`).pipe(
+      catchError(error => {
+        if (error.status === 404) {
+          return of([]);
+        }
+        return throwError(() => error);
+      })
+    );
+  }
+
+  deleteOrdonnance(id: number): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/ordonnance/${id}`).pipe(
+      tap(response => console.log('Ordonnance deleted:', response)),
+      catchError(this.handleError('Error deleting ordonnance'))
+    );
   }
   
   private handleError(message: string) {

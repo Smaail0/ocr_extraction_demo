@@ -1,63 +1,104 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Résultats de l'Analyse de l'Ordonnance</title>
-  <!-- Bootstrap Icons -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/bootstrap-icons.min.css" rel="stylesheet">
+<div class="container mt-5">
 
-</head>
-<body>
-  <div class="container mt-5">
-    <div class="row mb-4">
-      <div class="col">
-        <h2 class="text-center">Résultats de l'Analyse de l'Ordonnance</h2>
-        <div class="alert alert-info">
-          <strong>Type de Document :</strong>
-          <span class="badge bg-primary ms-2" (click)="goToBulletin()">Bulletin de Soin</span>
-          <span class="badge bg-primary ms-2" (click)="goToPrescription()">Ordonnance</span>
+  <!-- Document extraction moved to aside -->
+  <aside class="document-extraction mb-3" *ngIf="files.length > 0">
+    <details>
+      <summary>
+        <h5>Extracted Documents</h5>
+      </summary>
+      <div class="card shadow-sm p-2">
+        <ul class="nav nav-tabs nav-sm mb-2">
+          <li class="nav-item" *ngFor="let doc of files; let i = index">
+            <a class="nav-link py-1 px-2" [class.active]="i === selectedIndex" (click)="selectTab(i)">
+              {{ doc.header.documentType | titlecase }}
+            </a>
+          </li>
+        </ul>
+        <div class="card-body p-2">
+          <small><strong>Type:</strong> {{ files[selectedIndex].header.documentType }}</small>
+          <span *ngIf="files[selectedIndex].header.dossierId">
+            &nbsp;|&nbsp;<strong>Réf. Dossier:</strong> {{ files[selectedIndex].header.dossierId }}
+          </span>
         </div>
-        <p class="text-muted">Fichier : <span class="fst-italic">Non spécifié</span></p>
+        <!-- NAV TABS: show each documentType, call selectTab -->
+        <ul class="nav nav-tabs nav-sm mb-2">
+          <li class="nav-item" *ngFor="let f of files; let i = index">
+            <a class="nav-link py-1 px-2" [class.active]="i === selectedIndex" (click)="selectTab(i)">
+              {{ f.documentType | titlecase }}
+            </a>
+          </li>
+        </ul>
+
       </div>
-    </div>
+    </details>
+  </aside>
+  <div class="cnam-form position-relative">
 
     <div class="prescription-container">
       <!-- Pharmacy and Patient Info Header -->
       <div class="row mb-4">
+        <!-- Modify the form-buttons and alert section -->
+        <div class="row mb-3">
+          <div class="col-12">
+            <div class="form-buttons">
+              <button type="button" class="btn btn-primary btn-sm" (click)="toggleEditMode()">
+                <i class="bi bi-pencil-square me-1"></i>
+                {{ isEditMode ? 'Save Changes' : 'Verify Data' }}
+              </button>
+            </div>
+
+            <!-- Status Alert -->
+            <div *ngIf="showStatusAlert" class="status-alert">
+              <div class="alert py-2"
+                [ngClass]="{'alert-warning': isEditMode, 'alert-success': !isEditMode && showStatusAlert}">
+                <small *ngIf="isEditMode">Edit mode enabled. Please verify and correct any fields as needed.</small>
+                <small *ngIf="!isEditMode && showStatusAlert">Changes saved successfully!</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Header -->
+
         <div class="col-md-6">
           <div class="pharmacy-info">
-            <h3>Nom de Pharmacie</h3>
-            <p>Adresse</p>
-            <p>Téléphoone / Fax </p>
-            <p>Matricule Fisale</p>
+            <h3>
+              <input type="text" class="form-control" [(ngModel)]="ordonnance.nom_pharmacie"
+                placeholder="Nom de Pharmacie">
+            </h3>
+            <input type="text" class="form-control mb-2" [(ngModel)]="ordonnance.adresse_pharmacie"
+              placeholder="Adresse">
+            <input type="text" class="form-control mb-2" [(ngModel)]="ordonnance.telephone_fax"
+              placeholder="Téléphone / Fax">
+            <input type="text" class="form-control mb-2" [(ngModel)]="ordonnance.matricule_fiscale"
+              placeholder="Matricule Fiscale">
           </div>
         </div>
         <div class="col-md-6">
           <div class="patient-info">
             <div class="info-group">
               <span class="info-label">ID Bénéficiaire:</span>
-              <div class="field-bordered"></div>
+              <input type="text" class="form-control" [(ngModel)]="ordonnance.id_beneficiaire">
             </div>
             <div class="info-group">
               <span class="info-label">Identité du malade:</span>
-              <div class="field-bordered"></div>
+              <input type="text" class="form-control" [(ngModel)]="ordonnance.nom_malade">
             </div>
             <div class="info-group">
               <span class="info-label">Code du prescripteur:</span>
-              <div class="field-bordered"></div>
+              <input type="text" class="form-control" [(ngModel)]="ordonnance.code_prescripteur">
             </div>
             <div class="info-group">
               <span class="info-label">Date de la prescription:</span>
-              <div class="field-bordered"></div>
+              <input type="date" class="form-control" [(ngModel)]="ordonnance.date_prescription">
             </div>
             <div class="info-group">
               <span class="info-label">Régime:</span>
-              <div class="field-bordered"></div>
+              <input type="text" class="form-control" [(ngModel)]="ordonnance.regime">
             </div>
             <div class="info-group">
               <span class="info-label">Date de dispensation:</span>
-              <div class="field-bordered"></div>
+              <input type="date" class="form-control" [(ngModel)]="ordonnance.date_dispensation">
             </div>
           </div>
         </div>
@@ -77,13 +118,13 @@
         <div class="col-md-6">
           <div class="info-group">
             <span class="info-label">Exécuteur:</span>
-            <div class="field-bordered"></div>
+            <input type="text" class="form-control" [(ngModel)]="ordonnance.code_executeur">
           </div>
         </div>
         <div class="col-md-6">
           <div class="info-group">
             <span class="info-label">Référence CNAM du pharmacien:</span>
-            <div class="field-bordered"></div>
+            <input type="text" class="form-control" [(ngModel)]="ordonnance.reference_cnam">
           </div>
         </div>
       </div>
@@ -106,18 +147,28 @@
             </thead>
             <tbody>
               <tr>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+                <td><input type="text" class="form-control" [(ngModel)]="ordonnance.code_pct"></td>
+                <td><input type="text" class="form-control" [(ngModel)]="ordonnance.produit"></td>
+                <td><input type="text" class="form-control" [(ngModel)]="ordonnance.forme"></td>
+                <td>
+                  <input type="number" class="form-control" [(ngModel)]="ordonnance.quantite"
+                    (change)="calculateTotal()">
+                </td>
+                <td>
+                  <input type="number" class="form-control" [(ngModel)]="ordonnance.prix_unitaire"
+                    (change)="calculateTotal()">
+                </td>
+                <td>
+                  <input type="number" class="form-control" [(ngModel)]="ordonnance.montant_percu">
+                </td>
+                <td><input type="text" class="form-control" [(ngModel)]="ordonnance.nio"></td>
+                <td><input type="text" class="form-control" [(ngModel)]="ordonnance.pr_lot"></td>
               </tr>
               <tr class="total-row">
                 <td colspan="5" class="text-end">Total</td>
-                <td></td>
+                <td>
+                  <input type="number" class="form-control" [(ngModel)]="ordonnance.montant_total">
+                </td>
                 <td colspan="2"></td>
               </tr>
             </tbody>
@@ -130,7 +181,8 @@
         <div class="col-12">
           <div class="info-group">
             <span class="info-label">Arrêtée à la somme de:</span>
-            <div class="field-bordered"></div>
+            <input type="text" class="form-control" [(ngModel)]="ordonnance.montant_en_lettres"
+              placeholder="Montant en lettres">
           </div>
         </div>
       </div>
@@ -144,34 +196,19 @@
         </div>
       </div>
 
-      <!-- Footer with Barcode and Stamps -->
+      <!-- Footer with Pharmacy Info -->
       <div class="row mb-5">
-
-        <div class="col-md-4 ">
+        <div class="col-md-4">
           <div class="pharmacy-stamp">
-            <p>Nom de Pharmacie</p>
-            <p>Adresse</p>
-            <p>Tél / Fax</p>
-            <p>Matricule Fisc.</p>
+            <p>{{ ordonnance.nom_pharmacie || 'Nom de Pharmacie' }}</p>
+            <p>{{ ordonnance.adresse_pharmacie || 'Adresse' }}</p>
+            <p>{{ ordonnance.telephone_fax || 'Tél / Fax' }}</p>
+            <p>{{ ordonnance.matricule_fiscale || 'Matricule Fisc.' }}</p>
           </div>
         </div>
-
       </div>
 
       <!-- Action Buttons -->
-      <div class="row mb-5">
-        <div class="col-12 text-center">
-          <button class="btn btn-primary me-2">
-            <i class="bi bi-printer"></i> Imprimer les Données
-          </button>
-          <button class="btn btn-danger">
-            <i class="bi bi-flag"></i> Signaler un Problème
-          </button>
-        </div>
-      </div>
+
     </div>
   </div>
-
-  
-</body>
-</html>
