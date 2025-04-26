@@ -2,8 +2,8 @@ import { Component, ElementRef, EventEmitter, Output, ViewChild } from '@angular
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { forkJoin, of } from 'rxjs';
-import { catchError, finalize, tap } from 'rxjs/operators';
+import { forkJoin, of, throwError } from 'rxjs';
+import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 import { DocumentsService } from '../../services/documents.service';
 
 interface UploadFile {
@@ -110,52 +110,116 @@ export class UploadDocComponent {
   /**
    * Called when user clicks “Extract Text”
    */
+  /**
+ * Called when user clicks "Extract Text"
+ */
   uploadDocuments(): void {
     if (this.isSubmitDisabled) return;
     this.isUploading = true;
     this.uploadProgress = 0;
-
-    // kick off one OCR call per file
-    const calls = this.uploadFiles.map((u, idx) =>
-      this.documentsService.processBulletin(u.file).pipe(
-        tap(() => {
-          // increment progress as each completes
-          this.uploadProgress = Math.round((idx + 1) / this.uploadFiles.length * 100);
+    
+    const filesToUpload = this.uploadFiles.map(u => u.file);
+    this.uploadProgress = 0;
+    
+    // Instead of guessing the type from filename, we'll process each file first
+    // and then make the upload decision based on what the processing tells us
+    const processingObservables = this.uploadFiles.map((u, idx) => {
+      // Here we'll use the processBulletin endpoint for initial analysis
+      // This is a workaround - ideally we'd have a dedicated type detection endpoint
+      return this.documentsService.processBulletin(u.file).pipe(  
+        tap((result) => {
+          const progress = Math.round(((idx + 1) / this.uploadFiles.length) * 50);
+          this.uploadProgress = progress;
         }),
+        map(result => ({ file: u.file, result, index: idx })),
         catchError(err => {
-          console.error('OCR failed for', u.file.name, err);
-          return of(null);   // swallow errors so all Observables complete
+          console.error('Processing failed for', u.file.name, err);
+          return of(null);
         })
-      )
-    );
-
-    forkJoin(calls).pipe(
+      );
+    });
+    
+    forkJoin(processingObservables).pipe(
+      switchMap(results => {
+        // Filter out any nulls from failed processing
+        const validResults = results.filter(r => r !== null) as any[];
+        if (!validResults.length) {
+          alert('Processing failed for all files');
+          return throwError(() => new Error('All processing failed'));
+        }
+        
+        // Now we can identify document types from the processing results
+        const ordonnanceFiles: File[] = [];
+        const bulletinFiles: File[] = [];
+        const successfulResults: any[] = [];
+        
+        validResults.forEach(item => {
+          if (item && item.result?.header?.documentType === 'ordonnance_model_v2') {
+            ordonnanceFiles.push(item.file);
+            successfulResults.push(item.result);
+          } else {
+            bulletinFiles.push(item.file);
+            successfulResults.push(item.result);
+          }
+        });
+        
+        // Now do the appropriate uploads
+        const uploadObservables = [];
+        if (ordonnanceFiles.length > 0) {
+          uploadObservables.push(
+            this.documentsService.uploadOrdonnances(ordonnanceFiles).pipe(
+              tap(() => console.log('Ordonnances uploaded'))
+            )
+          );
+        }
+        if (bulletinFiles.length > 0) {
+          uploadObservables.push(
+            this.documentsService.uploadBulletins(bulletinFiles).pipe(
+              tap(() => console.log('Bulletins uploaded'))
+            )
+          );
+        }
+        
+        this.uploadProgress = 75;
+        return uploadObservables.length ? 
+          forkJoin(uploadObservables).pipe(map(() => successfulResults)) : 
+          of(successfulResults);
+      }),
       finalize(() => this.isUploading = false)
     ).subscribe({
-      next: results => {
-        const successful = results.filter(r => r !== null);
-        if (!successful.length) {
-          return alert('All OCR requests failed');
+      next: (successfulResults) => {
+        // Check if there are any results to process
+        if (!successfulResults || !successfulResults.length) {
+          return alert('No documents were successfully processed');
         }
-        // build a minimal array of { documentType, dossierId, ... } objects
-        // successful is already that parsed JSON from your backend
-        if (successful.length === 1) {
-          this.router.navigate([`extracted/${this.uploadFiles[0].id}`], {
-            state: { files: successful }
-          });
+        
+        // Determine routing based on document type of results
+        const hasOrdonnance = successfulResults.some(
+          result => result?.header?.documentType === 'ordonnance_model_v2'
+        );
+        
+        if (hasOrdonnance) {
+          this.router.navigate(['ordonnance'], { state: { files: successfulResults } });
         } else {
-          this.router.navigate(['extracted/tabs'], {
-            state: { files: successful }
-          });
+          if (successfulResults.length === 1) {
+            this.router.navigate([`extracted/${this.uploadFiles[0].id}`], { 
+              state: { files: successfulResults } 
+            });
+          } else {
+            this.router.navigate(['extracted/tabs'], { 
+              state: { files: successfulResults } 
+            });
+          }
         }
         this.close.emit(true);
       },
-      error: err => {
-        console.error('Unexpected error in OCR pipeline', err);
-        alert('Extraction error, please try again.');
+      error: (err) => {
+        console.error('Error in upload/processing pipeline', err);
+        alert('Processing error, please try again.');
       }
     });
   }
+  
 
   getFileIcon(file: File): string {
     if (file.type.includes('pdf')) return 'pdf-icon';
