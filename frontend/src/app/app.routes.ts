@@ -2,6 +2,7 @@ import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { UploadDocComponent } from './components/upload-doc/upload-doc.component';
 import { BulletinComponent }   from './components/bulletin/bulletin.component';
+import { PrescriptionComponent } from './components/prescription/prescription.component';
 
 export const routes: Routes = [
   // Upload screen
@@ -12,6 +13,9 @@ export const routes: Routes = [
 
   // Multi-document tabs view
   { path: 'extracted/tabs',    component: BulletinComponent },
+
+  // Ordonnance
+  { path: 'ordonnance',    component: PrescriptionComponent },
 
   // Legacy “bulletin” alias → go to the tabs view
   { path: 'bulletin',          redirectTo: 'extracted/tabs', pathMatch: 'full' },
