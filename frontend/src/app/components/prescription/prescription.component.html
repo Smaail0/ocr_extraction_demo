@@ -1,177 +1,351 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Résultats de l'Analyse de l'Ordonnance</title>
-  <!-- Bootstrap Icons -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/bootstrap-icons.min.css" rel="stylesheet">
-
-</head>
-<body>
+<ng-container *ngIf="prescription">
   <div class="container mt-5">
-    <div class="row mb-4">
-      <div class="col">
-        <h2 class="text-center">Résultats de l'Analyse de l'Ordonnance</h2>
-        <div class="alert alert-info">
-          <strong>Type de Document :</strong>
-          <span class="badge bg-primary ms-2" (click)="goToBulletin()">Bulletin de Soin</span>
-          <span class="badge bg-primary ms-2" (click)="goToPrescription()">Ordonnance</span>
-        </div>
-        <p class="text-muted">Fichier : <span class="fst-italic">Non spécifié</span></p>
-      </div>
-    </div>
-
-    <div class="prescription-container">
-      <!-- Pharmacy and Patient Info Header -->
-      <div class="row mb-4">
-        <div class="col-md-6">
-          <div class="pharmacy-info">
-            <h3>Nom de Pharmacie</h3>
-            <p>Adresse</p>
-            <p>Téléphoone / Fax </p>
-            <p>Matricule Fisale</p>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="patient-info">
-            <div class="info-group">
-              <span class="info-label">ID Bénéficiaire:</span>
-              <div class="field-bordered"></div>
+    <div class="cnam-form position-relative">
+      <div class="prescription-container">
+        <!-- Form Buttons / Alert -->
+        <div class="row mb-3">
+          <div class="col-12">
+            <div class="form-buttons">
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                (click)="toggleEditMode()"
+              >
+                <i class="bi bi-pencil-square me-1"></i>
+                {{ isEditMode ? "Save Changes" : "Verify Data" }}
+              </button>
             </div>
-            <div class="info-group">
-              <span class="info-label">Identité du malade:</span>
-              <div class="field-bordered"></div>
-            </div>
-            <div class="info-group">
-              <span class="info-label">Code du prescripteur:</span>
-              <div class="field-bordered"></div>
-            </div>
-            <div class="info-group">
-              <span class="info-label">Date de la prescription:</span>
-              <div class="field-bordered"></div>
-            </div>
-            <div class="info-group">
-              <span class="info-label">Régime:</span>
-              <div class="field-bordered"></div>
-            </div>
-            <div class="info-group">
-              <span class="info-label">Date de dispensation:</span>
-              <div class="field-bordered"></div>
+            <div *ngIf="showStatusAlert" class="status-alert">
+              <div
+                class="alert py-2"
+                [ngClass]="{
+                  'alert-warning': isEditMode,
+                  'alert-success': !isEditMode
+                }"
+              >
+                <small *ngIf="isEditMode">
+                  Edit mode enabled. Please verify and correct any fields as
+                  needed.
+                </small>
+                <small *ngIf="!isEditMode"> Changes saved successfully! </small>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Title Box -->
-      <div class="row mb-4">
-        <div class="col-12">
-          <div class="title-box">
-            Exécution d'une ordonnance
+        <!-- Pharmacy Info -->
+        <div class="row mb-4">
+          <div class="col-md-6">
+            <div class="pharmacy-info">
+              <h3>
+                <span class="info-label">Nom du Pharmacie: </span>
+                <input
+                  type="text"
+                  class="form-control"
+                  [(ngModel)]="prescription.pharmacyName"
+                  [readonly]="!isEditMode"
+                  placeholder="Nom de Pharmacie"
+                />
+              </h3>
+              <h3>
+                <span class="info-label">Adresse: </span>
+                <input
+                  type="text"
+                  class="form-control mb-2"
+                  [(ngModel)]="prescription.pharmacyAddress"
+                  [readonly]="!isEditMode"
+                  placeholder="Adresse de Pharmacie"
+                />
+              </h3>
+              <h3>
+                <span class="info-label">Contact Tél / Fax: </span>
+                <input
+                  type="text"
+                  class="form-control mb-2"
+                  [(ngModel)]="prescription.pharmacyContact"
+                  [readonly]="!isEditMode"
+                  placeholder="Tel/Fax"
+                />
+              </h3>
+              <h3>
+                <span class="info-label">Matricule Fiscale: </span>
+                <input
+                  type="text"
+                  class="form-control mb-2"
+                  [(ngModel)]="prescription.pharmacyFiscalId"
+                  [readonly]="!isEditMode"
+                  placeholder="Matricule Fiscale"
+                />
+              </h3>
+            </div>
+          </div>
+
+          <!-- Patient Info -->
+          <div class="col-md-6">
+            <div class="patient-info">
+              <div class="info-group mb-2">
+                <span class="info-label">ID Bénéficiaire:</span>
+                <input
+                  type="text"
+                  class="form-control"
+                  [(ngModel)]="prescription.beneficiaryId"
+                  [readonly]="!isEditMode"
+                />
+              </div>
+              <div class="info-group mb-2">
+                <span class="info-label">Identité du malade:</span>
+                <input
+                  type="text"
+                  class="form-control"
+                  [(ngModel)]="prescription.patientIdentity"
+                  [readonly]="!isEditMode"
+                />
+              </div>
+              <div class="info-group mb-2">
+                <span class="info-label">Code du prescripteur:</span>
+                <input
+                  type="text"
+                  class="form-control"
+                  [(ngModel)]="prescription.prescriberCode"
+                  [readonly]="!isEditMode"
+                />
+              </div>
+              <div class="info-group mb-2">
+                <span class="info-label">Date de la prescription:</span>
+                <input
+                  type="date"
+                  class="form-control"
+                  [(ngModel)]="prescription.prescriptionDate"
+                  [readonly]="!isEditMode"
+                />
+              </div>
+              <div class="info-group mb-2">
+                <span class="info-label">Régime:</span>
+                <input
+                  type="text"
+                  class="form-control"
+                  [(ngModel)]="prescription.regimen"
+                  [readonly]="!isEditMode"
+                />
+              </div>
+              <div class="info-group">
+                <span class="info-label">Date de dispensation:</span>
+                <input
+                  type="date"
+                  class="form-control"
+                  [(ngModel)]="prescription.dispensationDate"
+                  [readonly]="!isEditMode"
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Executor Info -->
-      <div class="row mb-4">
-        <div class="col-md-6">
-          <div class="info-group">
-            <span class="info-label">Exécuteur:</span>
-            <div class="field-bordered"></div>
+        <!-- Executor Info -->
+        <div class="row mb-4">
+          <div class="col-md-6">
+            <div class="info-group">
+              <span class="info-label">Exécuteur:</span>
+              <input
+                type="text"
+                class="form-control"
+                [(ngModel)]="prescription.executor"
+                [readonly]="!isEditMode"
+              />
+            </div>
           </div>
-        </div>
-        <div class="col-md-6">
-          <div class="info-group">
-            <span class="info-label">Référence CNAM du pharmacien:</span>
-            <div class="field-bordered"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Prescription Table -->
-      <div class="row mb-4">
-        <div class="col-12">
-          <table class="prescription-table">
-            <thead>
-              <tr>
-                <th>Code PCT</th>
-                <th>Produit</th>
-                <th>Forme</th>
-                <th>Qte</th>
-                <th>PUV</th>
-                <th>Mt. Perçu</th>
-                <th>N.I.O</th>
-                <th>PR/Lot</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-              </tr>
-              <tr class="total-row">
-                <td colspan="5" class="text-end">Total</td>
-                <td></td>
-                <td colspan="2"></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Total Amount in Words -->
-      <div class="row mb-4">
-        <div class="col-12">
-          <div class="info-group">
-            <span class="info-label">Arrêtée à la somme de:</span>
-            <div class="field-bordered"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Thank You Message -->
-      <div class="row mb-4">
-        <div class="col-12">
-          <div class="thank-you-message">
-            &lt;&lt; Merci et bon rétablissement &gt;&gt;
-          </div>
-        </div>
-      </div>
-
-      <!-- Footer with Barcode and Stamps -->
-      <div class="row mb-5">
-
-        <div class="col-md-4 ">
-          <div class="pharmacy-stamp">
-            <p>Nom de Pharmacie</p>
-            <p>Adresse</p>
-            <p>Tél / Fax</p>
-            <p>Matricule Fisc.</p>
+          <div class="col-md-6">
+            <div class="info-group">
+              <span class="info-label">Référence CNAM du pharmacien:</span>
+              <input
+                type="text"
+                class="form-control"
+                [(ngModel)]="prescription.pharmacistCnamRef"
+                [readonly]="!isEditMode"
+              />
+            </div>
           </div>
         </div>
 
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="row mb-5">
-        <div class="col-12 text-center">
-          <button class="btn btn-primary me-2">
-            <i class="bi bi-printer"></i> Imprimer les Données
-          </button>
-          <button class="btn btn-danger">
-            <i class="bi bi-flag"></i> Signaler un Problème
-          </button>
+        <!-- Prescription Table -->
+        <div class="row mb-4">
+          <div class="col-12">
+            <table class="prescription-table">
+              <thead>
+                <tr>
+                  <th>Code PCT</th>
+                  <th>Produit</th>
+                  <th>Forme</th>
+                  <th>Qte</th>
+                  <th>PUV</th>
+                  <th>Mt. Perçu</th>
+                  <th>N.I.O</th>
+                  <th>PR/Lot</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let item of prescription.items; let i = index">
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.codePCT"
+                      [readonly]="!isEditMode"
+                      name="codePCT{{ i }}"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.produit"
+                      [readonly]="!isEditMode"
+                      name="produit{{ i }}"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.forme"
+                      [readonly]="!isEditMode"
+                      name="forme{{ i }}"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.qte"
+                      [readonly]="!isEditMode"
+                      name="qte{{ i }}"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.puv"
+                      [readonly]="!isEditMode"
+                      name="puv{{ i }}"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.montantPercu"
+                      name="montantPercu{{ i }}"
+                      [readonly]="!isEditMode"
+                      (ngModelChange)="calculateTotals()"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.nio"
+                      [readonly]="!isEditMode"
+                      name="nio{{ i }}"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="item.prLot"
+                      [readonly]="!isEditMode"
+                      name="prLot{{ i }}"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="summary-row">
+                  <!-- empty cells for Code→Qte -->
+                  <td colspan="4"></td>
+                  <!-- PUV column: Total TTC -->
+                  <td class="text-center">
+                    <strong>{{ prescription.total }}</strong>
+                  </td>
+                  <!-- Mt. Perçu col -->
+                  <td class="text-center">
+                    <strong>Ml perçu : {{ prescription.mtPercu }}</strong>
+                  </td>
+                  <!-- N.I.O col -->
+                  <td class="text-center">
+                    <strong>Mt Restant : {{ prescription.mtRes }}</strong>
+                  </td>
+                  <!-- PR/Lot col empty -->
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
+
+        <!-- Total in Words -->
+        <div class="row mb-4">
+          <div class="col-12">
+            <div class="info-group">
+              <span class="info-label">Arrêtée à la somme de:</span>
+              <textarea
+                class="form-control"
+                rows="2"
+                [(ngModel)]="prescription.totalInWords"
+                [readonly]="!isEditMode"
+                name="totalInWords"
+                placeholder="Montant en lettres"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Stamp -->
+        <div class="row mb-5">
+          <div class="col-md-4 pharmacy-stamp">
+            <p>
+              <input
+                type="text"
+                class="form-control"
+                [(ngModel)]="prescription.pharmacyName"
+                [readonly]="!isEditMode"
+                placeholder="Nom de Pharmacie"
+              />
+            </p>
+            <p>
+              <input
+              type="text"
+              class="form-control"
+              [(ngModel)]="prescription.pharmacyAddress"
+              [readonly]="!isEditMode"
+              placeholder="Adresse de Pharmacie"
+            />
+            </p>
+            <p>
+              <input
+              type="text"
+              class="form-control"
+              [(ngModel)]="prescription.pharmacyContact"
+              [readonly]="!isEditMode"
+              placeholder="Tél/Fax"
+            />
+            </p>
+            <p>
+              <input
+              type="text"
+              class="form-control"
+              [(ngModel)]="prescription.pharmacyFiscalId"
+              [readonly]="!isEditMode"
+              placeholder="Matricule Fiscale"
+            />
+            </p>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <!-- … -->
       </div>
     </div>
   </div>
-
-  
-</body>
-</html>
+</ng-container>

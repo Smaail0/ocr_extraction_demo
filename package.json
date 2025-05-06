@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@angular/cdk": "^19.2.11",
     "@angular/common": "^19.2.7",
     "@angular/forms": "^19.2.7",
     "@angular/router": "^19.2.7"

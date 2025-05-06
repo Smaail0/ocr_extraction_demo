@@ -1,32 +1,41 @@
-import { Component, ElementRef, EventEmitter, Output, ViewChild } from '@angular/core';
+import { Component, ElementRef, EventEmitter, Output, ViewChild, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { forkJoin, of } from 'rxjs';
+import { forkJoin, of, Observable } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 import { DocumentsService } from '../../services/documents.service';
+import { CdkDragDrop, moveItemInArray, DragDropModule } from '@angular/cdk/drag-drop';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
+import { StepperComponent } from '../stepper/stepper.component';
 
 interface UploadFile {
   file: File;
   id: string;
+  preview: string;
+  thumbnails?: string[];
+  progress: number;
+  status: 'pending'|'uploading'|'success'|'error';
 }
 
 @Component({
   selector: 'app-upload-doc',
   standalone: true,
-  imports: [FormsModule, CommonModule],
+  imports: [FormsModule, CommonModule, DragDropModule, StepperComponent],
   templateUrl: './upload-doc.component.html',
   styleUrls: ['./upload-doc.component.css']
 })
 export class UploadDocComponent {
-  @ViewChild('dropArea') dropArea!: ElementRef;
+  @Input() mode: 'route'|'embedded' = 'route';
+  @Output() extracted = new EventEmitter<any[]>();
   @Output() close = new EventEmitter<boolean>();
 
   uploadFiles: UploadFile[] = [];
   isUploading = false;
   uploadProgress = 0;
+  isDragOver = false;
 
-  readonly MAX_FILES = 5;
+  readonly MAX_FILES = 2;
   readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
   constructor(
@@ -42,57 +51,63 @@ export class UploadDocComponent {
     return this.uploadFiles.length === 0 || this.isUploading;
   }
 
-  onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    if (this.canAddMoreFiles) this.dropArea.nativeElement.classList.add('active');
+  ngOnInit() {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/assets/pdfjs/pdf.worker.mjs';
   }
 
-  onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    this.dropArea.nativeElement.classList.remove('active');
-  }
-
-  onDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.dropArea.nativeElement.classList.remove('active');
-    if (!this.canAddMoreFiles) return this.showError(`Max ${this.MAX_FILES} files allowed`);
-    const files = event.dataTransfer?.files;
-    if (files) this.handleFiles(files);
-  }
-
-  onFileSelected(event: any): void {
-    const inp = event.target as HTMLInputElement;
-    const files = inp.files;
-    if (!this.canAddMoreFiles) {
-      this.showError(`Max ${this.MAX_FILES} files allowed`);
-      inp.value = '';
-      return;
+  onDragOver(evt: DragEvent) {
+    evt.preventDefault();
+    if (this.canAddMoreFiles) {
+      this.isDragOver = true;
     }
-    if (files) this.handleFiles(files);
+  }
+
+  onDragLeave(evt: DragEvent) {
+    evt.preventDefault();
+    this.isDragOver = false;
+  }
+
+  onDrop(evt: DragEvent) {
+    evt.preventDefault();
+    this.isDragOver = false;
+    if (!this.canAddMoreFiles) {
+      return alert(`Max ${this.MAX_FILES} files`);
+    }
+    if (evt.dataTransfer?.files) {
+      this.handleFiles(evt.dataTransfer.files);
+    }
+  }
+
+  onFileSelected(evt: Event) {
+    const inp = evt.target as HTMLInputElement;
+    if (inp.files) {
+      this.handleFiles(inp.files);
+    }
     inp.value = '';
   }
+  
 
   private handleFiles(files: FileList) {
     const slots = this.MAX_FILES - this.uploadFiles.length;
     for (let i = 0; i < Math.min(files.length, slots); i++) {
       const f = files[i];
       if (!this.ALLOWED_TYPES.includes(f.type)) {
-        this.showError(`Unsupported: ${f.name}`);
+        alert(`Unsupported type: ${f.name}`);
         continue;
       }
-      if (this.uploadFiles.some(u => u.file.name === f.name && u.file.size === f.size)) {
-        this.showError(`Duplicate ignored: ${f.name}`);
-        continue;
-      }
-      this.uploadFiles.push({ file: f, id: this.generateUniqueId() });
-    }
-    if (files.length > slots) {
-      this.showError(`Only added ${slots} file(s); limit ${this.MAX_FILES}.`);
+      this.addFile(f);
     }
   }
 
   removeFile(i: number) {
-    this.uploadFiles.splice(i, 1);
+    // revoke URL if image
+    const p = this.uploadFiles[i].preview;
+    if (p.startsWith('blob:')) URL.revokeObjectURL(p);
+    this.uploadFiles.splice(i,1);
+  }
+
+  dropListDropped(evt: CdkDragDrop<UploadFile[]>) {
+    moveItemInArray(this.uploadFiles, evt.previousIndex, evt.currentIndex);
   }
 
   private showError(msg: string) {
@@ -102,61 +117,127 @@ export class UploadDocComponent {
   closeSection() {
     this.close.emit(false);
   }
+  
+  private addFile(f: File) {
+    // 1) avoid duplicates
+    const existing = this.uploadFiles.find(u =>
+      u.file.name === f.name && u.file.size === f.size
+    );
+    if (existing) return;
+  
+    // 2) create the UploadFile object
+    const uf: UploadFile = {
+      file:      f,
+      id:        this.generateUniqueId(),
+      preview:   this.makePreview(f),  // blob-url or pdf-icon
+      progress:  0,
+      status:    'pending'
+    };
+  
+    // 3) push it into your list
+    this.uploadFiles.push(uf);
+  
+    // 4) if it's a PDF, kick off thumbnail generation
+    if (f.type === 'application/pdf') {
+      this.generatePdfThumbnails(uf);
+    }
+  }  
 
+  private makePreview(file: File): string {
+    if (file.type === 'application/pdf') {
+      return '/PDF_icon.webp';  // put a PDF icon in assets
+    }
+    return URL.createObjectURL(file);
+  }
+
+  private generatePdfThumbnails(u: UploadFile) {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const pdf = await pdfjsLib.getDocument(new Uint8Array(reader.result as ArrayBuffer)).promise;
+      const thumbs: string[] = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const scale = 0.2; // tweak for desired thumbnail size
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width  = vp.width;
+        canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
+        thumbs.push(canvas.toDataURL('image/png'));
+      }
+      u.thumbnails = thumbs;
+    };
+    reader.readAsArrayBuffer(u.file);
+  }
+  
   private generateUniqueId(): string {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
   }
 
-  /**
-   * Called when user clicks “Extract Text”
-   */
   uploadDocuments(): void {
     if (this.isSubmitDisabled) return;
     this.isUploading = true;
-    this.uploadProgress = 0;
-
-    // kick off one OCR call per file
-    const calls = this.uploadFiles.map((u, idx) =>
-      this.documentsService.processBulletin(u.file).pipe(
-        tap(() => {
-          // increment progress as each completes
-          this.uploadProgress = Math.round((idx + 1) / this.uploadFiles.length * 100);
-        }),
-        catchError(err => {
-          console.error('OCR failed for', u.file.name, err);
-          return of(null);   // swallow errors so all Observables complete
-        })
-      )
-    );
-
-    forkJoin(calls).pipe(
-      finalize(() => this.isUploading = false)
-    ).subscribe({
-      next: results => {
-        const successful = results.filter(r => r !== null);
-        if (!successful.length) {
-          return alert('All OCR requests failed');
-        }
-        // build a minimal array of { documentType, dossierId, ... } objects
-        // successful is already that parsed JSON from your backend
-        if (successful.length === 1) {
-          this.router.navigate([`extracted/${this.uploadFiles[0].id}`], {
-            state: { files: successful }
-          });
-        } else {
-          this.router.navigate(['extracted/tabs'], {
-            state: { files: successful }
-          });
-        }
-        this.close.emit(true);
-      },
-      error: err => {
-        console.error('Unexpected error in OCR pipeline', err);
-        alert('Extraction error, please try again.');
-      }
+  
+    const calls = this.uploadFiles.map(u => {
+      u.status = 'uploading';
+      return this.documentsService.parseDocument(u.file).pipe(
+        tap(res => { u.progress = 100; u.status = 'success'; }),
+        catchError(_ => { u.status = 'error'; return of(null); })
+      );
     });
+  
+    forkJoin(calls)
+      .pipe(finalize(() => this.isUploading = false))
+      .subscribe({
+        next: (results: any[]) => {
+          // filter out any failed parses
+          const files         = results.filter(r => !!r);
+          // **if we're embedded, hand them back to the parent and stop**
+          if (this.mode === 'embedded') {
+            this.extracted.emit(files);
+            return;
+          }
+  
+          const prescriptions = files.filter(f => f.header.documentType === 'prescription');
+          const bulletins     = files.filter(f => f.header.documentType === 'bulletin_de_soin');
+          const idxOf         = (arr: any[], x: any) => arr.indexOf(x);
+  
+          // only prescriptions → land on the first prescription tab
+          if (prescriptions.length && !bulletins.length) {
+            this.router.navigate(
+              ['/extracted'],
+              { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
+            );
+            return;
+          }
+  
+          // only bulletins → land on the first bulletin tab
+          if (bulletins.length && !prescriptions.length) {
+            this.router.navigate(
+              ['/extracted'],
+              { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
+            );
+            return;
+          }
+  
+          // mixed → default to the first prescription
+          if (prescriptions.length) {
+            this.router.navigate(
+              ['/extracted'],
+              { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
+            );
+          } else {
+            // fallback: no prescriptions? show first bulletin
+            this.router.navigate(
+              ['/extracted'],
+              { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
+            );
+          }
+        },
+        error: _ => alert('Extraction error')
+      });
   }
-
+  
   getFileIcon(file: File): string {
     if (file.type.includes('pdf')) return 'pdf-icon';
     if (file.type.includes('image')) return 'image-icon';

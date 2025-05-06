@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpEventType } from '@angular/common/http';
 import { Observable, throwError, of } from 'rxjs';
-import { catchError, tap, map, filter } from 'rxjs/operators';
+import { Prescription, PrescriptionCreate } from '../models/prescription.model'; // Adjust the 
+import { catchError, tap, map, filter } from 'rxjs/operators'; // Adjust the import path as necessary
 
 @Injectable({
   providedIn: 'root'
@@ -24,6 +25,30 @@ export class DocumentsService {
   getBulletinById(id: number): Observable<any> {
     return this.http.get(`${this.apiUrl}/bulletin/${id}`).pipe(
       catchError(this.handleError(`Error fetching bulletin with ID ${id}`))
+    );
+  }
+
+  processBulletin(file: File): Observable<any> {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    return this.http.post<any>(`${this.apiUrl}/bulletin/parse`, fd).pipe(
+      tap(res => console.log('Bulletin OCR result:', res)),
+      catchError((err: HttpErrorResponse) => {
+        console.error('Error processing bulletin', err);
+        return throwError(() => err);
+      })
+    );
+  }
+
+  processPrescription(file: File): Observable<Prescription> {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    return this.http.post<Prescription>(`${this.apiUrl}/prescription/parse`, fd).pipe(
+      tap(res => console.log('Prescription OCR result:', res)),
+      catchError((err: HttpErrorResponse) => {
+        console.error('Error processing prescription', err);
+        return throwError(() => err);
+      })
     );
   }
 
@@ -62,15 +87,28 @@ export class DocumentsService {
     );
   }
 
-  processBulletin(file: File): Observable<any> {
+  getPrescriptionById(id: number): Observable<Prescription> {
+    return this.http
+      .get<Prescription>(`${this.apiUrl}/prescription/${id}`)
+      .pipe(
+        catchError((err: HttpErrorResponse) => {
+          console.error(`Error fetching prescription ${id}`, err);
+          return throwError(() => err);
+        })
+      );
+  }
+
+  parseDocument(file: File): Observable<any> {
     const fd = new FormData();
     fd.append('file', file, file.name);
-    return this.http
-      .post<any>(`${this.apiUrl}/bulletin/parse`, fd)
-      .pipe(
-        tap(res => console.log('OCR result:', res)),
-        catchError(this.handleError('Error processing bulletin'))
-      );
+    return this.http.post<any>(`${this.apiUrl}/documents/parse`, fd).pipe(
+      tap(res => console.log('OCR result:', res)),
+      catchError(this.handleError('Error processing document'))
+    );
+}
+
+  savePrescription(p: PrescriptionCreate): Observable<Prescription> {
+    return this.http.post<Prescription>(`${this.apiUrl}/prescription`, p);
   }
   
   private handleError(message: string) {
@@ -80,3 +118,4 @@ export class DocumentsService {
     };
   }
 }
+

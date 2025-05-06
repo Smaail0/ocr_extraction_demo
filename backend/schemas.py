@@ -1,9 +1,50 @@
-#Schemas
-
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel
 
+# ── Your existing Prescription/PrescriptionItem ──
+class PrescriptionItem(BaseModel):
+    codePCT: str
+    produit: str
+    forme: str
+    qte: str
+    puv: str
+    montantPercu: str
+    nio: str
+    prLot: str
+
+class PrescriptionBase(BaseModel):
+    pharmacyName: str
+    pharmacyAddress: Optional[str]
+    pharmacyContact: Optional[str]
+    pharmacyFiscalId: Optional[str]
+
+    beneficiaryId: Optional[str]
+    patientIdentity: str
+    prescriberCode: Optional[str]
+    prescriptionDate: Optional[str]
+    regimen: Optional[str]
+    dispensationDate: Optional[str]
+
+    executor: Optional[str]
+    pharmacistCnamRef: Optional[str]
+
+    items: List[PrescriptionItem]
+    total: Optional[str]
+    totalInWords: Optional[str]
+
+class PrescriptionCreate(PrescriptionBase):
+    beneficiaryId: str
+
+class Prescription(PrescriptionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+# ── Your existing Bulletin ──
 class BulletinBase(BaseModel):
     prenom: Optional[str] = None
     nom: Optional[str] = None
@@ -25,7 +66,7 @@ class BulletinBase(BaseModel):
     patientType: Optional[str] = None
 
 class BulletinCreate(BulletinBase):
-    pass
+    identifiantUnique: str 
 
 class Bulletin(BulletinBase):
     id: int
@@ -35,22 +76,7 @@ class Bulletin(BulletinBase):
     class Config:
         orm_mode = True
 
-class FileUploadBase(BaseModel):
-    filename: str
-    original_name: str
-    path: str
-
-class FileUploadCreate(FileUploadBase):
-    pass
-
-class FileUpload(FileUploadBase):
-    id: int
-    uploaded_at: datetime
-
-    class Config:
-        orm_mode = True
-        
-        
+# ── FileUpload / UploadResponse ──
 class UploadedFileInfo(BaseModel):
     id: int
     filename: str
@@ -59,3 +85,44 @@ class UploadedFileInfo(BaseModel):
 class UploadResponse(BaseModel):
     message: str
     uploaded_files: List[UploadedFileInfo]
+
+# ── Patient & relationships ──
+class PatientBase(BaseModel):
+    first_name: str
+    last_name: str
+
+class PatientCreate(PatientBase):
+    pass
+
+class Patient(PatientBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+# Now extend your DB-ready schemas with patient_id
+class BulletinInDB(Bulletin):
+    id: int
+    patient_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class PrescriptionInDB(Prescription):
+    id: int
+    patient_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+# Finally, a wrapper that includes both lists
+class PatientWithDocs(Patient):
+    bulletins: List[BulletinInDB]       = []
+    prescriptions: List[PrescriptionInDB] = []
+    
