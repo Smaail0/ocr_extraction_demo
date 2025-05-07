@@ -38,7 +38,7 @@ class Bulletin(Base):
     dateNaissance      = Column(String,  nullable=True)
     numTel             = Column(String,  nullable=True)
     refDossier         = Column(String,  nullable=True)
-    identifiantUnique  = Column(String,  nullable=False)  # now required
+    identifiantUnique  = Column(String,  nullable=False)
     cnss               = Column(Boolean, default=False)
     cnrps              = Column(Boolean, default=False)
     convbi             = Column(Boolean, default=False)
@@ -46,10 +46,8 @@ class Bulletin(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # ← here’s the missing foreign‐key column
+    
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    # ← and the back‐ref to Patient:
     patient    = relationship("Patient", back_populates="bulletins")
 
 
@@ -62,7 +60,7 @@ class Prescription(Base):
     pharmacyContact    = Column(String,  nullable=True)
     pharmacyFiscalId   = Column(String,  nullable=True)
 
-    beneficiaryId      = Column(String,  nullable=False)  # now required
+    beneficiaryId      = Column(String,  nullable=False)
     patientIdentity    = Column(String,  nullable=False)
     prescriberCode     = Column(String,  nullable=True)
     prescriptionDate   = Column(String,  nullable=True)
@@ -79,9 +77,7 @@ class Prescription(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # ← this is your new FK column:
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    # ← and the back‐ref to Patient:
     patient    = relationship("Patient", back_populates="prescriptions")
 
 
