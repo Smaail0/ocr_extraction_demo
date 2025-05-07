@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel
 
-# ── Your existing Prescription/PrescriptionItem ──
 class PrescriptionItem(BaseModel):
     codePCT: str
     produit: str
@@ -44,7 +43,6 @@ class Prescription(PrescriptionBase):
     class Config:
         orm_mode = True
 
-# ── Your existing Bulletin ──
 class BulletinBase(BaseModel):
     prenom: Optional[str] = None
     nom: Optional[str] = None
@@ -102,7 +100,6 @@ class Patient(PatientBase):
     class Config:
         orm_mode = True
 
-# Now extend your DB-ready schemas with patient_id
 class BulletinInDB(Bulletin):
     id: int
     patient_id: int
@@ -121,7 +118,6 @@ class PrescriptionInDB(Prescription):
     class Config:
         orm_mode = True
 
-# Finally, a wrapper that includes both lists
 class PatientWithDocs(Patient):
     bulletins: List[BulletinInDB]       = []
     prescriptions: List[PrescriptionInDB] = []
