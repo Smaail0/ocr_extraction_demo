@@ -10,6 +10,7 @@ from . import models, schemas
 from .database import Base, engine, SessionLocal
 from sqlalchemy import desc
 from .services.azure import parse_bulletin_ocr
+from .services.azure import parse_ordonnance_ocr 
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -213,12 +214,18 @@ def update_ordonnance(ordonnance_id: int, ordonnance: schemas.OrdonnanceCreate, 
 async def parse_ordonnance(file: UploadFile = File(...)):
     # Read file bytes
     contents = await file.read()
-    # Assuming you'll create an ordonnance OCR parser similar to the bulletin one
-    # You would need to implement parse_ordonnance_ocr in your azure service
-    from .services.azure import parse_ordonnance_ocr  # Import your OCR service
-    parsed = await parse_ordonnance_ocr(contents, file.filename)
-    
+
+    parsed = await parse_ordonnance_ocr(contents,file.filename)
     return parsed
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 
 # Upload ordonnance files
 @app.post("/ordonnance/upload", response_model=schemas.UploadResponse)

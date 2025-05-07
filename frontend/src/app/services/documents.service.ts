@@ -128,21 +128,25 @@ export class DocumentsService {
   processOrdonnance(file: File): Observable<any> {
     const fd = new FormData();
     fd.append('file', file, file.name);
+    
+    // Add timestamp to prevent caching
+    const timestamp = new Date().getTime();
+    
     return this.http
-      .post<any>(`${this.apiUrl}/ordonnance/parse`, fd)
+      .post<any>(`${this.apiUrl}/ordonnance/parse?_t=${timestamp}`, fd)
       .pipe(
         tap(res => console.log('OCR result:', res)),
         catchError(this.handleError('Error processing ordonnance'))
       );
   }
-
+  
   getAllOrdonnances(): Observable<any[]> {
     return this.http.get<any[]>(`${this.apiUrl}/ordonnance/`).pipe(
       catchError(error => {
         if (error.status === 404) {
           return of([]);
         }
-        return throwError(() => error);
+        return throwError(() => error); 
       })
     );
   }

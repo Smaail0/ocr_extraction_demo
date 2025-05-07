@@ -51,9 +51,7 @@ export class PrescriptionComponent implements OnInit {
   // Properties for document extraction view
   files: any[] = [];
   selectedIndex = 0;
-  formData = {
-    refDossier: ''
-  };
+
 
   constructor(
     private router: Router,
@@ -68,7 +66,7 @@ export class PrescriptionComponent implements OnInit {
     if (id && !isNaN(Number(id))) {
       this.ordonnanceId = Number(id);
       this.loadOrdonnance(this.ordonnanceId);
-      this.isEditing = true;
+      this.isEditing = false;
     }
 
     // Get files from navigation state if available
@@ -91,9 +89,7 @@ export class PrescriptionComponent implements OnInit {
     });
   }
 
-  /**
-   * Toggle between edit and view modes
-   */
+
   toggleEditMode(): void {
     if (this.isEditMode) {
       // Save changes when exiting edit mode
@@ -169,19 +165,69 @@ export class PrescriptionComponent implements OnInit {
         this.processingFile = false;
         this.successMessage = 'Ordonnance traitée avec succès';
         
-        // Direct assignment of the result object to ordonnance
+        console.log('Raw ordonnance data from API:', result);
+        
         if (result) {
-          console.log('Mapping ordonnance data:', result);
-          
-          // Directly map all properties from result to ordonnance
-          Object.keys(result).forEach(key => {
-            if (this.ordonnance.hasOwnProperty(key)) {
-              this.ordonnance[key] = result[key];
+          // Clear all previous values to avoid mixing old and new data
+          Object.keys(this.ordonnance).forEach(key => {
+            if (typeof this.ordonnance[key] === 'number') {
+              this.ordonnance[key] = null;
+            } else {
+              this.ordonnance[key] = '';
             }
           });
           
-          // Calculate total if we have quantity and price
-          this.calculateTotal();
+          // Explicitly map each field from the result to our model
+          // This ensures we handle both string and numeric fields correctly
+          if (result.nom_pharmacie) this.ordonnance.nom_pharmacie = result.nom_pharmacie;
+          if (result.adresse_pharmacie) this.ordonnance.adresse_pharmacie = result.adresse_pharmacie;
+          if (result.telephone_fax) this.ordonnance.telephone_fax = result.telephone_fax;
+          if (result.matricule_fiscale) this.ordonnance.matricule_fiscale = result.matricule_fiscale;
+          
+          if (result.id_beneficiaire) this.ordonnance.id_beneficiaire = result.id_beneficiaire;
+          if (result.nom_malade) this.ordonnance.nom_malade = result.nom_malade;
+          if (result.code_prescripteur) this.ordonnance.code_prescripteur = result.code_prescripteur;
+          if (result.date_prescription) this.ordonnance.date_prescription = result.date_prescription;
+          if (result.regime) this.ordonnance.regime = result.regime;
+          if (result.date_dispensation) this.ordonnance.date_dispensation = result.date_dispensation;
+          if (result.code_executeur) this.ordonnance.code_executeur = result.code_executeur;
+          if (result.reference_cnam) this.ordonnance.reference_cnam = result.reference_cnam;
+          
+          if (result.code_pct) this.ordonnance.code_pct = result.code_pct;
+          if (result.produit) this.ordonnance.produit = result.produit;
+          if (result.forme) this.ordonnance.forme = result.forme;
+          
+          // Handle numeric fields
+          if (result.quantite) this.ordonnance.quantite = parseInt(result.quantite);
+          
+          // For price fields that may have comma as decimal separator
+          if (result.prix_unitaire) {
+            const price = typeof result.prix_unitaire === 'string' 
+              ? parseFloat(result.prix_unitaire.replace(',', '.'))
+              : result.prix_unitaire;
+            this.ordonnance.prix_unitaire = price;
+          }
+          
+          if (result.montant_percu) {
+            const amount = typeof result.montant_percu === 'string'
+              ? parseFloat(result.montant_percu.replace(',', '.'))
+              : result.montant_percu;
+            this.ordonnance.montant_percu = amount;
+          }
+          
+          if (result.nio) this.ordonnance.nio = result.nio;
+          if (result.pr_lot) this.ordonnance.pr_lot = result.pr_lot;
+          
+          if (result.montant_total) this.ordonnance.montant_total = result.montant_total;
+          if (result.montant_en_lettres) this.ordonnance.montant_en_lettres = result.montant_en_lettres;
+          
+          // Calculate total if we have quantity and price but no total
+          if (this.ordonnance.quantite && this.ordonnance.prix_unitaire && !this.ordonnance.montant_total) {
+            this.calculateTotal();
+          }
+          
+          // Log the final mapped object
+          console.log('Final mapped ordonnance object:', {...this.ordonnance});
         }
       },
       error: (error) => {
@@ -238,9 +284,7 @@ export class PrescriptionComponent implements OnInit {
         
         // Or handle nested structure if that's what's coming from your backend
         // This is the fallback for your current structure
-        if (docData.header && docData.header.dossierId) {
-          this.formData.refDossier = docData.header.dossierId;
-        }
+
         
         if (docData.patient) {
           this.ordonnance.nom_malade = docData.patient.lastName || '';
@@ -265,5 +309,9 @@ export class PrescriptionComponent implements OnInit {
         }
       }
     }
+  }
+  logChange(field: string, value: any): void {
+    console.log(`Field ${field} changed to:`, value);
+    this.ordonnance[field] = value;
   }
 }

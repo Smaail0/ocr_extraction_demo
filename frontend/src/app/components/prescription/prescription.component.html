@@ -63,8 +63,8 @@
         <div class="col-md-6">
           <div class="pharmacy-info">
             <h3>
-              <input type="text" class="form-control" [(ngModel)]="ordonnance.nom_pharmacie"
-                placeholder="Nom de Pharmacie">
+              <input type="text" class="form-control" [ngModel]="ordonnance.nom_pharmacie" 
+  (ngModelChange)="logChange('nom_pharmacie', $event)" placeholder="Nom de Pharmacie">
             </h3>
             <input type="text" class="form-control mb-2" [(ngModel)]="ordonnance.adresse_pharmacie"
               placeholder="Adresse">
