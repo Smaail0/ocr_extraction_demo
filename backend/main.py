@@ -12,7 +12,6 @@ from . import models, schemas
 from .database import engine, SessionLocal
 from .services.azure import classify_form_on_bytes, parse_bulletin_ocr, parse_prescription_ocr
 
-# ── Create or upgrade your tables (make sure Alembic has run the migration too) ──
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Medical Documents API")
