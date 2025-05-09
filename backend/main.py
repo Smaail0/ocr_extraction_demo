@@ -20,6 +20,13 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Medical Documents API")
 
+BASE = Path(__file__).resolve().parent.parent
+# ── Load header templates ──
+PRESC_HDR = cv2.imread(str(BASE / "assets" /"ordonnance_header1.png"))
+BULL_HDR = cv2.imread(str(BASE / "assets" /"bulletin_de_soin_header1.png"))
+if PRESC_HDR is None or BULL_HDR is None:
+    raise RuntimeError("Could not load header templates – check your paths!")
+
 # ── CORS ──
 app.add_middleware(
     CORSMiddleware,
@@ -62,25 +69,18 @@ async def parse_document(file: UploadFile = File(...)):
     # LOCAL classification only
     form_key = classify_form(
         scan_path=tmp_path,
-        presc_hdr_img=cv2.imread("assets/ordonnance_header1.png"),
-        bullet_hdr_img=cv2.imread("assets/bulletin_de_soin_header1.png"),
-        min_matches=15,
-        margin=8
+        presc_hdr_img=PRESC_HDR,
+        bullet_hdr_img=BULL_HDR,
     )
     tmp_path.unlink()
-
-    if form_key == "unknown":
-        raise HTTPException(
-            status_code=400,
-            detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
-        )
 
     # now dispatch to Azure
     try:
         if form_key == "prescription":
             parsed = await parse_prescription_ocr(data, file.filename)
-        else:
+        else :
             parsed = await parse_bulletin_ocr(data, file.filename)
+
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
 
