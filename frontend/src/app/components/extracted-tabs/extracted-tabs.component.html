@@ -1,0 +1,22 @@
+<aside class="chrome-tabs-container" *ngIf="files?.length">
+    <div class="chrome-tabs">
+      <ul class="chrome-tab-list">
+        <li
+          class="chrome-tab"
+          *ngFor="let doc of files; let i = index"
+          [class.active]="i === selectedIndex"
+          (click)="selectTab(i)"
+        >
+          <span class="chrome-tab-label">
+            {{ doc.header.documentType | titlecase }}
+          </span>
+        </li>
+  
+        <!-- the “new tab” button -->
+        <li class="chrome-tab chrome-tab-add" (click)="plusClick.emit()">
+          <i class="bi bi-plus-lg"></i>
+        </li>
+      </ul>
+    </div>
+  </aside>
+  

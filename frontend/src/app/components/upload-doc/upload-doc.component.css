@@ -1,9 +1,93 @@
+.workflow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;       /* center children horizontally */
+  padding: 2rem 1rem 0;       /* push everything down a bit */
+}
+
+/* center the stepper circle+labels */
+.workflow app-stepper {
+  width: 100%;
+  max-width: 600px;          /* or whatever max width */
+  margin-bottom: 2rem;
+}
+
+.upload-container {
+  width: 100%;
+  max-width: 1400px;      /* constrain card width */
+  padding: 0 1rem;          /* small side padding on mobile */
+}
+
 .border-dashed {
     border-style: dashed !important;
   }
   
-  .disabled {
+  .upload-drop-area {
+    border: 2px dashed #ccc;
+    padding: 2rem;
+    text-align: center;
+    margin-bottom: 1rem;
+    transition: background 0.3s, border-color 0.3s, opacity 0.3s;
+    cursor: pointer;
+  }
+
+  .text-muted.small {
+    font-size: 0.85rem;
+    color: #6c757d;
+  }
+  
+  /* when you’re dragging files over */
+  .upload-drop-area.active {
+    background: #eef;
+    border-color: #99f;
+  }
+  
+  /* when max files reached, prevent interaction */
+  .upload-drop-area.disabled {
     pointer-events: none;
     opacity: 0.6;
+  }
+  
+  /* nice spacing under the icon */
+  .upload-drop-area .fs-1 {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+  
+  
+  .file-card-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .file-card {
+    position: relative;
+    width: 120px;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+    text-align: center;
+  }
+  .file-card .thumb {
+    width: 100%;
+    height: 80px;
+    object-fit: contain;
+    margin-bottom: 0.5rem;
+  }
+  .file-card .info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+  }
+  .file-card .status {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+  }
+  .file-card .progress {
+    height: 4px;
+    margin-top: 0.25rem;
   }
   

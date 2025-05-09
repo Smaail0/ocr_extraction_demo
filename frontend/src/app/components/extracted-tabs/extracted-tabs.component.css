@@ -1,0 +1,73 @@
+/* wrapper keeps tabs horizontally scrollable if too many */
+.chrome-tabs-container {
+    overflow-x: auto;
+    padding-bottom: 1px; /* so active tab border blends into content */
+  }
+  
+  /* the tabs bar itself */
+  .chrome-tabs {
+    background: #ddd;
+    padding: 0 8px;
+  }
+  
+  /* reset list styles */
+  .chrome-tab-list {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 4px 0 0 0;
+  }
+  
+  /* each tab */
+  .chrome-tab {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    margin-right: 2px;
+    background: #e8e8e8;
+    border: 1px solid #bbb;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    user-select: none;
+    transition: background 0.2s;
+  }
+  
+  .chrome-tab:hover {
+    background: #5885ff;
+  }
+  
+  /* active tab sits flush with the content area below */
+  .chrome-tab.active {
+    background: #ffffff;
+    border-color: #aaaaaa;
+    border-bottom-color: transparent;
+    font-weight: 500;
+    color: #222;
+    z-index: 1;
+  }
+  
+  /* label inside the tab */
+  .chrome-tab-label {
+    pointer-events: none;
+  }
+  
+  /* the “+” tab */
+  .chrome-tab-add {
+    background: #e8e8e8;
+    color: #555;
+    justify-content: center;
+  }
+  .chrome-tab-add:hover {
+    background: #d0d0d0;
+  }
+  
+  /* make sure the content panel below sits under the active tab */
+  :host ::ng-deep .card {
+    margin-top: -1px; /* lift card up so active tab border overlaps */
+  }
+  

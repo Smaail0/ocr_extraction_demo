@@ -1,7 +1,80 @@
-/* Main Form Container */
-.container {
-  max-width: 800px;
-  margin: 20px auto;
+/*───────────────────────────────────────────────────────*/
+/* 1. Force page breaks and two equal 50/50 columns on Page 1 */
+/*───────────────────────────────────────────────────────*/
+.cnam-bulletin .page {
+  page-break-after: always;
+}
+
+.page-1 {
+  display: flex;
+}
+.page-1 > .column {
+  flex: 0 0 50%;
+  max-width: 50%;
+  min-width: 0;
+  border: 2px solid #009a44;
+  padding: 1rem;           /* push content off the border */
+  box-sizing: border-box;
+}
+
+.page-2 > [class*="col-"] {
+  flex: 0 0 50%;
+  max-width: 50%;
+  min-width: 0;
+  border: 2px solid #009a44;
+  padding: 1rem;           /* push content off the border */
+  box-sizing: border-box;
+}
+
+/* If the dental table is wider than its column, scroll horizontally */
+.left {
+  overflow-x: auto;
+}
+.left table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.page-1 th {
+  white-space: normal;         /* allow wrapping */
+  word-break: break-word;      /* break inside long words if needed */
+  padding: .5rem;              /* give a bit more breathing room */
+  text-align: center;          /* center your headers */
+}
+
+/*───────────────────────────────────────────────────────*/
+/* 2. Full-width container override                     */
+/*───────────────────────────────────────────────────────*/
+/* Allow the bulletin to span the entire viewport width */
+.cnam-bulletin > .container {
+  max-width: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 16px; /* optional side padding */
+}
+
+/*───────────────────────────────────────────────────────*/
+/* 3. Main Form Styles (your existing CSS)             */
+/*───────────────────────────────────────────────────────*/
+.section-title {
+  background: #009a44;
+  color: white;
+  padding: .25rem .5rem;
+  font-size: .9rem;
+}
+
+.form-section .section-header + .id-row {
+  margin-top: 1rem;
+}
+
+.vignettes-placeholder {
+  height: 200px;
+  background: #f8f9fa;
+  margin-top: 1rem;
+}
+
+.bg-success {
+  background-color: #009A44 !important;
 }
 
 .cnam-form {
@@ -20,7 +93,6 @@
   opacity: 0.1;
   width: 300px;
   height: 300px;
-
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -89,37 +161,41 @@
 /* Identifiant Unique */
 .id-row {
   display: flex;
-  border-bottom: 1px solid #009a44;
+  align-items: baseline;
+  position: relative;
+  overflow: visible;       /* never clip the boxes */
+  margin-bottom: 1rem;
 }
 
-.id-label {
-  width: 25%;
-  padding: 5px;
+.id-row .id-label {
+  flex: 0 0 140px;         /* exactly 140px wide */
   border-right: 1px solid #009a44;
+  padding: 0.5rem;
   text-align: center;
   font-weight: bold;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
-.id-boxes {
-  width: 75%;
+.id-row .id-boxes {
+  flex: 1;                 /* take up the rest of the row */
   display: flex;
+  gap: 0.25rem;            /* space between each box */
+  padding-right: 1rem;     /* keep them clear of the right border */
 }
 
-.id-box {
-  width: 8.33%;
-  border-right: 1px solid #009a44;
-  height: 30px;
+.id-row .id-box {
+  flex: 0 0 2rem;          /* 2rem × 2rem square */
+  height: 2rem;
+  line-height: 2rem;       /* vertically center the number */
   text-align: center;
   font-weight: bold;
-  border-radius: 0;
-  border-top: none;
-  border-bottom: none;
+  background: #fff;        /* cover any border behind it */
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  position: relative;
+  z-index: 1;
 }
 
-.id-box:last-child {
+.id-row .id-box:last-child {
   border-right: none;
 }
 
@@ -148,6 +224,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  accent-color: #000000;
 }
 
 /* Assured Info */
@@ -262,6 +339,9 @@
 /* Form Buttons */
 .form-buttons {
   text-align: center;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
 }
 
 /* Form control overrides */
@@ -269,7 +349,7 @@
   box-shadow: none;
   border-color: #009a44;
 }
-/* Additional styles for edit mode and buttons */
+
 .form-control[readonly] {
   background-color: transparent;
   cursor: default;
@@ -299,28 +379,19 @@
   color: #155724;
 }
 
-/* Control buttons */
-.form-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-}
-
+/* Buttons */
 .btn-primary {
   background-color: #009a44;
   border-color: #008a3c;
 }
-
 .btn-primary:hover {
   background-color: #008038;
   border-color: #007030;
 }
-
 .btn-success {
   background-color: #28a745;
   border-color: #28a745;
 }
-
 .btn-success:hover {
   background-color: #218838;
   border-color: #1e7e34;
@@ -330,35 +401,23 @@
 .field-dots input:not([readonly]) {
   background-color: #f8fffc;
 }
+
 .nav-tabs .nav-link {
   cursor: pointer;
 }
 
-/* Print specific styles */
+/*───────────────────────────────────────────────────────*/
+/* 4. Print-specific styles                             */
+/*───────────────────────────────────────────────────────*/
 @media print {
   .form-buttons, .alert {
     display: none !important;
   }
-  
-  body {
+  body, .container, .cnam-form {
     margin: 0;
     padding: 0;
-  }
-  
-  .container {
     max-width: 100%;
-    width: 100%;
-    margin: 0;
-    padding: 0;
   }
-  
-  .cnam-form {
-    border: 1px solid #009a44;
-    box-shadow: none;
-    margin: 0;
-    padding: 0;
-  }
-
   input[type="checkbox"] {
     -webkit-appearance: none;
     appearance: none;
@@ -368,7 +427,6 @@
     height: 16px;
     position: relative;
   }
-  
   input[type="checkbox"]:checked::after {
     content: "✓";
     position: absolute;
@@ -378,37 +436,40 @@
   }
 }
 
-/* Responsiveness */
+/*───────────────────────────────────────────────────────*/
+/* 5. Mobile responsiveness                             */
+/*───────────────────────────────────────────────────────*/
 @media (max-width: 768px) {
+  .page-1 {
+    flex-direction: column;
+  }
+  .page-1 > .column {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
   .header {
     flex-direction: column;
   }
-  
   .ref-container {
     width: 100%;
     text-align: left;
     margin-top: 10px;
   }
-  
   .field-row {
     flex-direction: column;
     align-items: flex-start;
   }
-  
   .field-value-ar {
     text-align: left;
     margin-top: 5px;
   }
-  
   .important-notice {
     flex-direction: column;
   }
-  
   .notice-fr, .notice-ar {
     width: 100%;
     text-align: left;
   }
-  
   .notice-ar {
     margin-top: 10px;
   }

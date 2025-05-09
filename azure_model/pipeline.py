@@ -7,11 +7,13 @@ import tempfile
 
 import json
 import cv2
+import re
 import numpy as np
 from pdf2image import convert_from_path
 from dotenv import load_dotenv
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
+from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 load_dotenv()
@@ -34,6 +36,26 @@ def analyze_document(scan_path: Path, model_id: str, pages: list[str]):
             pages=pages
         )
     return poller.result()
+
+
+def classify_form_on_bytes(file_bytes: bytes, filename: str) -> str:
+    """ Write bytes to disk, load headers, run classify_form, clean up. """
+    suffix = Path(filename).suffix or ".pdf"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = Path(tmp.name)
+        # load your header images once here
+        presc_hdr  = cv2.imread("assets/ordonnance_header1.png")
+        bullet_hdr = cv2.imread("assets/bulletin_de_soin_header1.png")
+        if presc_hdr is None or bullet_hdr is None:
+            raise RuntimeError("Could not load header images")
+        # call your existing classify_form()
+        return classify_form(tmp_path, presc_hdr, bullet_hdr, poppler=None)
+    finally:
+        if tmp_path and tmp_path.exists():
+            tmp_path.unlink()
 
 def dump_results(result, output_txt: Path, min_conf: float = 0.1):
 
@@ -130,80 +152,402 @@ def classify_form(
     logging.info("▷ classified as %r (best score=%d)", best[0], best[1])
     return best[0]
 
+def format_prescription_id(raw: str) -> str:
+    # 1) strip everything but digits
+    digits = re.sub(r"\D+", "", raw or "")
+    # 2) slice into exactly five parts:
+    parts = [
+        digits[0:4],   # e.g. "2365"
+        digits[4:8],   # e.g. "0685"
+        digits[8:10],  # e.g. "84"
+        digits[10:11], # e.g. "" if missing
+        digits[11:12], # e.g. "" if missing
+    ]
+    # 3) replace any empty slice with "0"
+    parts = [p if p else "0" for p in parts]
+    return "-".join(parts)
+
+import tempfile, os
+from pathlib import Path
+from typing import Optional, List, Dict
+
+from pathlib import Path
+import tempfile, os
+from typing import Optional, List, Dict
+import unicodedata
+
 def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
-    # 1) Drop bytes to a temp file
-    suffix = Path(filename).suffix or ".pdf"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = Path(tmp.name)
+    tmp_path: Optional[Path] = None
+    try:
+        # ── 1) dump bytes to a temp file ────────────────────────────────
+        suffix = Path(filename).suffix or ".pdf"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = Path(tmp.name)
 
-    # 2) Load header templates once the temp file is on disk
-    presc_hdr  = cv2.imread("assets/ordonnance_header1.png")
-    bullet_hdr = cv2.imread("assets/bulletin_de_soin_header1.png")
-    if presc_hdr is None or bullet_hdr is None:
-        raise RuntimeError("❌ Could not load header images – check your paths")
+        # ── 2) OCR ───────────────────────────────────────────────────────
+        form_key = classify_form_on_bytes(file_bytes, filename)
+        if form_key != "bulletin_de_soin":
+            raise ValueError(f"Expected bulletin_de_soin, got {form_key!r}")
 
-    # 3) Classify form and pick the model
-    form_key = classify_form(
-        scan_path=tmp_path,
-        presc_hdr_img=presc_hdr,
-        bullet_hdr_img=bullet_hdr,
-        poppler=None       # or your Poppler path on Windows
-    )
-    model_id = (
-        os.getenv("ORDONNANCE_MODEL_ID")
-        if form_key == "prescription"
-        else os.getenv("BULLETIN_MODEL_ID")
-    )
+        model_id = os.getenv("BULLETIN_MODEL_ID")
+        result   = analyze_document(tmp_path, model_id=model_id, pages=None)
+        doc      = result.documents[0]
+        f        = doc.fields
+        tables   = result.tables  # ← your 8 Azure tables
 
-    # 4) Perform OCR
-    result = analyze_document(tmp_path, model_id=model_id, pages=None)
+        # ── helpers ──────────────────────────────────────────────────────
+        def txt(k: str) -> Optional[str]:
+            fld = f.get(k)
+            return fld and (fld.get("valueString") or fld.get("content"))
 
-    # 5) Pull out fields
-    doc = result.documents[0]
-    f   = doc.fields
+        def chk(k: str) -> bool:
+            fld = f.get(k)
+            return (fld.get("valueSelectionMark","").lower() == "selected") if fld else False
 
-    def txt(key: str) -> str | None:
-        fld = f.get(key)
-        if not fld:
-            return None
-        # Custom model returns its text under "valueString"
-        return fld.get("valueString") or fld.get("content")
+        def extract_grid(tbl) -> List[List[str]]:
+            grid = [[""] * tbl.column_count for _ in range(tbl.row_count)]
+            for cell in tbl.cells:
+                grid[cell.row_index][cell.column_index] = cell.content.strip()
+            return grid
 
-    def chk(key: str) -> bool:
-        fld = f.get(key)
-        if not fld:
-            return False
-        # Custom model returns “valueSelectionMark” = “selected”/“unselected”
-        sm = fld.get("valueSelectionMark")
-        return (sm or "").lower() == "selected"
+        # ── core “by‐index” mapper ───────────────────────────────────────
+        def table_to_objects(grid: List[List[str]], cols: List[str]) -> List[Dict[str,str]]:
+            # skip the header row (grid[0]), map each subsequent row
+            out = []
+            for row in grid[1:]:
+                obj: Dict[str,str] = {}
+                for idx, key in enumerate(cols):
+                    obj[key] = row[idx] if idx < len(row) else ""
+                out.append(obj)
+            return out
+        
+        # ── 3) extract all 8 grids ───────────────────────────────────────
+        grids = [extract_grid(tbl) for tbl in tables]
 
-    parsed = {
-      "header": {
-        "documentType": doc.doc_type,
-        "dossierId":    txt("id_dossier")
-      },
-      "insured": {
-        "uniqueId":          txt("id_unique"),
-        "cnrpsChecked":      chk("cnrps_check"),
-        "cnssChecked":       chk("cnss_check"),
-        "conventionChecked": chk("convention_check"),
-        "firstName":         txt("prenom_assure"),
-        "lastName":          txt("nom_assure"),
-        "address":           txt("adresse_assure"),
-        "postalCode":        txt("code_postal")
-      },
-      "patient": {
-        "firstName": txt("prenom_malade"),
-        "lastName":  txt("nom_malade"),
-        "birthDate": txt("date_naissance_malade"),
-        "isChild":   chk("enfant")
-      }
-    }
+        # ── 4) map into exactly the keys your Angular expects ───────────
+        consultations_dentaires = table_to_objects(grids[0], [
+            "date","dent","codeActe","cotation","honoraires","codePs","signature"
+        ])
+        protheses_dentaires = table_to_objects(grids[1], [
+            "date","dents","codeActe","cotation","honoraires","codePs","signature"
+        ])
+        consultations_visites = table_to_objects(grids[2], [
+            "date","designation","honoraires","codePs","signature"
+        ])
+        actes_medicaux = table_to_objects(grids[3], [
+            "date","designation","honoraires","codePs","signature"
+        ])
+        actes_paramed = table_to_objects(grids[4], [
+            "date","designation","honoraires","codePs","signature"
+        ])
+        biologie = table_to_objects(grids[5], [
+            "date","montant","codePs","signature"
+        ])
+        hospitalisation = table_to_objects(grids[6], [
+            "date","codeHosp","forfait","codeClinique","signature"
+        ])
+        pharmacie = table_to_objects(grids[7], [
+            "date","montant","codePs","signature"
+        ])
 
-    # 6) Cleanup
-    tmp_path.unlink()
-    return parsed
+        # ── 5) other fields & checks ────────────────────────────────────
+        dossier_id   = txt("id_dossier") or ""
+        formatted_id = format_prescription_id(txt("id_unique") or "")
+
+        # insured info
+        prenom  = txt("prenom_assure") or ""
+        nom     = txt("nom_assure")     or ""
+        adresse = txt("adresse_assure") or ""
+        code_po = txt("code_postal")    or ""
+        cnrps_c = chk("cnrps_check")
+        cnss_c  = chk("cnss_check")
+        conv_c  = chk("convention_check")
+
+        # patient info
+        mal_prenom = txt("prenom_malade")    or ""
+        mal_nom    = txt("nom_malade")       or ""
+        mal_birth  = txt("date_naissance_malade") or ""
+        nom_pr_mal = txt("nom_prenom_malade")    or ""
+        date_prevu = txt("date_prevu")           or ""
+
+        apci_c        = chk("apci_check")
+        mo_c          = chk("mo_check")
+        hosp_req_c    = chk("hospitalisation_check")
+        suivi_gross_c = chk("suivi_grossesse_check")
+        conjoint_c    = chk("conjoint")
+        ascendant_c   = chk("ascendant")
+        assure_soc    = cnrps_c or cnss_c
+
+        # ── 6) assemble final dict ──────────────────────────────────────
+        return {
+            "header": {
+                "documentType": form_key,
+                "dossierId":    dossier_id
+            },
+
+            # assured info
+            "prenom":            prenom,
+            "nom":               nom,
+            "adresse":           adresse,
+            "codePostal":        code_po,
+            "refDossier":        dossier_id,
+            "identifiantUnique": formatted_id,
+            "cnrps":             cnrps_c,
+            "cnss":              cnss_c,
+            "convbi":            conv_c,
+
+            # the eight tables
+            "consultationsDentaires": consultations_dentaires,
+            "prothesesDentaires":     protheses_dentaires,
+            "consultationsVisites":   consultations_visites,
+            "actesMedicaux":          actes_medicaux,
+            "actesParamed":           actes_paramed,
+            "biologie":               biologie,
+            "hospitalisation":        hospitalisation,
+            "pharmacie":              pharmacie,
+
+            # extra checks & fields
+            "apci":                    apci_c,
+            "mo":                      mo_c,
+            "hospitalisationCheck":    hosp_req_c,
+            "suiviGrossesseCheck":     suivi_gross_c,
+            "datePrevu":               date_prevu,
+            "nomPrenomMalade":         nom_pr_mal,
+
+            # patient info
+            "assureSocial":            assure_soc,
+            "conjoint":                conjoint_c,
+            "ascendant":               ascendant_c,
+            "enfant":                  chk("enfant"),
+            "prenomMalade":            mal_prenom,
+            "nomMalade":               mal_nom,
+            "dateNaissance":           mal_birth,
+
+            # optional
+            "numTel":                  txt("telephone") or "",
+            "patientType":             None
+        }
+
+    finally:
+        if tmp_path and tmp_path.exists():
+            tmp_path.unlink()
+
+import os
+import tempfile
+from pathlib import Path
+import cv2
+
+def extract_all_tables(result) -> List[List[List[str]]]:
+    """
+    Given an Azure DocumentAnalysis result with `result.tables`,
+    returns a list of 2D string grids: each grid[row][col] is the cell content.
+    """
+    all_grids = []
+    for tbl in result.tables:
+        # initialize an empty grid sized to the table
+        grid = [[""] * tbl.column_count for _ in range(tbl.row_count)]
+        # fill in each recognized cell
+        for cell in tbl.cells:
+            grid[cell.row_index][cell.column_index] = cell.content.strip()
+        all_grids.append(grid)
+    return all_grids
+
+# assume analyze_document and classify_form are already defined above
+
+def analyze_document(scan_path: Path, model_id: str, pages: list[str] | None):
+    with open(scan_path, "rb") as f:
+        poller = client.begin_analyze_document(model_id, body=f, pages=pages)
+    return poller.result()
+
+def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
+    """
+    Sends prescription bytes to Azure, then:
+      - extracts the 8-column items table (or falls back to `prescription_items`)
+      - extracts the 2-column metadata table (or falls back to raw fields)
+      - splits the `pharmacie` blob into name / address / contact / fiscal ID
+      - pulls executor & CNAM ref
+    Returns a dict ready for your Angular UI.
+    """
+    tmp_path: Optional[Path] = None
+    try:
+        # ─── 1) dump bytes to temp file ────────────────────────────────
+        suffix = Path(filename).suffix or ".pdf"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = Path(tmp.name)
+
+        # ─── 2) call Azure Document Intelligence ───────────────────────
+        model_id = os.getenv("ORDONNANCE_MODEL_ID")
+        result   = analyze_document(tmp_path, model_id=model_id, pages=None)
+        doc      = result.documents[0]
+        f        = doc.fields
+
+        logging.info("Processing document fields: %s", list(f.keys()))
+        logging.info("Tables found by column count: %s",
+                     [tbl.column_count for tbl in result.tables])
+
+        # ─── helper to pull raw text or content ───────────────────────
+        def txt(key: str) -> Optional[str]:
+            fld = f.get(key)
+            if not fld:
+                return None
+            return fld.get("valueString") or fld.get("content")
+
+        # ─── 3) rebuild all tables into (col_count, matrix) ────────────
+        tables: list[tuple[int, list[list[str]]]] = []
+        for tbl in result.tables:
+            mat = [[""] * tbl.column_count for _ in range(tbl.row_count)]
+            for cell in tbl.cells:
+                mat[cell.row_index][cell.column_index] = cell.content.strip()
+            tables.append((tbl.column_count, mat))
+
+        # pick out the 8-col items table and the 2-col metadata table
+        items_mat = next((m for c, m in tables if c >= 8), None)
+        meta_mat  = next((m for c, m in tables if c == 2), None)
+
+        # ─── 4) parse the 8-col items (and footer) ────────────────────
+        items: list[dict] = []
+        total: Optional[str] = None
+        if items_mat and len(items_mat) > 1:
+            # actual item rows are 1..n-2
+            for row in items_mat[1:-1]:
+                cells = (row + [""] * 8)[:8]
+                items.append({
+                    "codePCT":      cells[0],
+                    "produit":      cells[1],
+                    "forme":        cells[2],
+                    "qte":          cells[3],
+                    "puv":          cells[4],
+                    "montantPercu": cells[5],
+                    "nio":          cells[6],
+                    "prLot":        cells[7],
+                })
+            # footer row could hold “Total …”
+            footer = items_mat[-1]
+            if footer and footer[0].lower().startswith("total"):
+                total = footer[0]
+
+        # ─── 5) parse the 2-col metadata ───────────────────────────────
+        beneficiaryId = patientIdentity = prescriberCode = None
+        prescriptionDate = regimen = dispensationDate = None
+
+        if meta_mat:
+            for key_cell, val_cell in meta_mat:
+                key = key_cell.strip().lower()
+                val = val_cell.strip()
+
+                # if value is blank but the key text has the date, extract inline
+                if not val and "date de la prescription" in key:
+                    m = re.search(r"(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})", key_cell)
+                    prescriptionDate = m.group(1) if m else None
+                    continue
+                if not val and "date de dispensation" in key:
+                    m = re.search(r"(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})", key_cell)
+                    dispensationDate = m.group(1) if m else None
+                    continue
+
+                # otherwise match on normalized key
+                if "bénéficiaire" in key:
+                    beneficiaryId = val
+                elif "identité" in key and "malade" in key:
+                    patientIdentity = val
+                elif "prescripteur" in key:
+                    prescriberCode = val
+                elif "date de la prescription" in key:
+                    prescriptionDate = val or prescriptionDate
+                elif "régime" in key:
+                    regimen = val or regimen
+                elif "date de dispensation" in key:
+                    dispensationDate = val or dispensationDate
+
+        # ─── 6) SAFE FALLBACKS for missing metadata ────────────────────
+        beneficiaryId    = beneficiaryId   or txt("id_unique")
+        formatted_id = format_prescription_id(beneficiaryId)
+        patientIdentity  = patientIdentity or txt("nom_prenom")
+        prescriberCode   = prescriberCode  or txt("code_apci")
+        prescriptionDate = prescriptionDate or txt("date")
+        dispensationDate = dispensationDate or txt("date_numero")
+        regimen          = regimen          or txt("regime")
+
+        # ─── 7) fallback items from the `prescription_items` array ─────
+        if not items and f.get("prescription_items"):
+            arr = f["prescription_items"].get("valueArray", [])
+            for idx, row in enumerate(arr):
+                cells = [(c.get("valueString") or c.get("content") or "").strip()
+                         for c in row.get("valueArray", [])]
+                if idx == 0:
+                    continue  # skip header
+                if cells and cells[0].lower().startswith("total"):
+                    total = cells[0]
+                    continue
+                a, b, c_, d = (cells + [""] * 4)[:4]
+                items.append({
+                    "codePCT": a,
+                    "produit": b,
+                    "forme":   c_,
+                    "qte":     d,
+                })
+
+        # ─── 8) fallback total from the raw field ──────────────────────
+        total = total or txt("total_ttc")
+
+        # ─── 9) split the `pharmacie` blob ────────────────────────────
+        raw_pharm = txt("pharmacie") or ""
+        parts        = re.split(r"Tél[:]? *", raw_pharm, maxsplit=1)
+        main_part    = parts[0].strip()
+        contact_part = parts[1] if len(parts) > 1 else ""
+
+        # address detection
+        addr_pat = re.compile(r"\b(RTE|Route|Rue|Av|Avenue)\b", re.IGNORECASE)
+        m = addr_pat.search(main_part)
+        if m:
+            pharmacyName    = main_part[:m.start()].strip()
+            pharmacyAddress = main_part[m.start():].strip()
+        elif " - " in main_part:
+            pharmacyName, pharmacyAddress = [p.strip() for p in main_part.split(" - ", 1)]
+        else:
+            pharmacyName    = main_part
+            pharmacyAddress = None
+
+        # Tel / Fax
+        tel_m = re.search(r"^([\d\s]+)", contact_part)
+        fax_m = re.search(r"Fax[:]? *([\d\s]+)", contact_part, re.IGNORECASE)
+        pharmacyContact   = " / ".join(filter(None, [
+            tel_m and tel_m.group(1).strip(),
+            fax_m and fax_m.group(1).strip(),
+        ])) or None
+
+        # fiscal ID
+        fisc_m = re.search(r"Matricule\s+Fisc[^\w]*(\w+)", contact_part, re.IGNORECASE)
+        pharmacyFiscalId = fisc_m.group(1).strip() if fisc_m else None
+
+        # ─── 10) executor & CNAM ref ───────────────────────────────────
+        executor          = txt("info_medecin")
+        pharmacistCnamRef = txt("code_cnam")
+
+        # ─── 11) build final dict ──────────────────────────────────────
+        return {
+            "header":            {"documentType": "prescription"},
+            "pharmacyName":      pharmacyName,
+            "pharmacyAddress":   pharmacyAddress,
+            "pharmacyContact":   pharmacyContact,
+            "pharmacyFiscalId":  pharmacyFiscalId,
+            "beneficiaryId":     formatted_id,
+            "patientIdentity":   patientIdentity,
+            "prescriberCode":    prescriberCode,
+            "prescriptionDate":  prescriptionDate,
+            "regimen":           regimen,
+            "dispensationDate":  dispensationDate,
+            "executor":          executor,
+            "pharmacistCnamRef": pharmacistCnamRef,
+            "items":             items,
+            "total":             total,
+        }
+
+    finally:
+        if tmp_path and tmp_path.exists():
+            tmp_path.unlink()
 
 def parse_ordonnance_ocr(file_bytes: bytes, filename: str) -> dict:
     """
@@ -443,7 +787,6 @@ def parse_ordonnance_ocr(file_bytes: bytes, filename: str) -> dict:
 
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
-
 def main():
     ap = argparse.ArgumentParser("Header‑based dispatch OCR pipeline")
     ap.add_argument("--scan",          required=True, type=Path,

@@ -1,44 +1,27 @@
-import { Component, OnInit } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
-import { DocumentsService } from '../../services/documents.service';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { Component, Input, OnInit, SimpleChanges}   from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';      // ← import ActivatedRoute
+import { CommonModule }        from '@angular/common';
+import { FormsModule }         from '@angular/forms';
+import { DocumentsService }    from '../../services/documents.service';
+import { Prescription, PrescriptionCreate }        from '../../models/prescription.model';
+import writtenNumber from 'written-number'
+import { ExtractedTabsComponent }  from '../extracted-tabs/extracted-tabs.component';
+
+writtenNumber.defaults.lang = 'fr';
 
 @Component({
   selector: 'app-prescription',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [
+    CommonModule, 
+    FormsModule,
+  ],
   templateUrl: './prescription.component.html',
-  styleUrl: './prescription.component.css'
+  styleUrls: ['./prescription.component.css']
 })
 export class PrescriptionComponent implements OnInit {
-  // Main data object
-  ordonnance: any = {
-    nom_pharmacie: '',
-    adresse_pharmacie: '',
-    telephone_fax: '',
-    matricule_fiscale: '',
-    id_beneficiaire: '',
-    nom_malade: '',
-    code_prescripteur: '',
-    date_prescription: '',
-    regime: '',
-    date_dispensation: '',
-    code_executeur: '',
-    reference_cnam: '',
-    code_pct: '',
-    produit: '',
-    forme: '',
-    quantite: null,
-    prix_unitaire: null,
-    montant_percu: null,
-    nio: '',
-    pr_lot: '',
-    montant_total: null,
-    montant_en_lettres: ''
-  };
+  @Input() prescription!: Prescription;
 
-  // Properties for form handling
   isEditMode = false;
   showStatusAlert = false;
   isEditing: boolean = false;
@@ -47,271 +30,155 @@ export class PrescriptionComponent implements OnInit {
   errorMessage: string = '';
   successMessage: string = '';
   processingFile: boolean = false;
-  
-  // Properties for document extraction view
+
   files: any[] = [];
   selectedIndex = 0;
-
-
+  formData = {
+    refDossier: ''
+  };
+  // ← inject ActivatedRoute here
   constructor(
     private router: Router,
     private route: ActivatedRoute,
     private documentsService: DocumentsService
-  ) { }
+  ) {}
 
-  ngOnInit(): void {
-    // Check if we're editing an existing ordonnance (could be determined by route parameter)
-    const url = this.router.url;
-    const id = url.split('/').pop();
-    if (id && !isNaN(Number(id))) {
-      this.ordonnanceId = Number(id);
-      this.loadOrdonnance(this.ordonnanceId);
-      this.isEditing = false;
-    }
-
-    // Get files from navigation state if available
-    const navState = this.router.getCurrentNavigation()?.extras.state || history.state;
-    this.files = navState?.files || [];
-    if (this.files.length > 0) {
-      this.selectTab(0);
-    }
+  private calculateTotalInWords() {
+    const raw = this.prescription.total ?? '';
+    const m = raw.match(/(\d{1,3}(?:[ \.,]\d{3})*(?:[.,]\d+)?)/);
+    if (!m) { this.prescription.totalInWords = ''; return; }
+    const [intPart, fracPart = ''] = m[1]
+      .replace(/\s/g,'').replace(',','.').split('.');
+    const dinars   = parseInt(intPart, 10) || 0;
+    const millimes = parseInt((fracPart+'000').slice(0,3),10) || 0;
+    const parts: string[] = [];
+    if (dinars)   parts.push(`${writtenNumber(dinars)} dinar${dinars>1?'s':''}`);
+    if (millimes) parts.push(`${writtenNumber(millimes)} millime${millimes>1?'s':''}`);
+    this.prescription.totalInWords = parts.length ? parts.join(' ') : 'zéro dinar';
   }
 
-  loadOrdonnance(id: number): void {
-    this.documentsService.getOrdonnanceById(id).subscribe({
-      next: (data) => {
-        this.ordonnance = data;
-      },
-      error: (error) => {
-        this.errorMessage = 'Impossible de charger l\'ordonnance';
-        console.error('Error loading ordonnance:', error);
+  private normalizeDates() {
+    if (!this.prescription) return;
+  
+    const toIso = (d?: string): string|undefined => {
+      // 1) If it's falsy or not a string, leave it alone
+      if (typeof d !== 'string' || !d.includes('/')) {
+        return d;
       }
-    });
+  
+      const parts = d.split('/');
+      // 2) If it doesn't split to exactly 3 parts, leave it alone
+      if (parts.length !== 3) {
+        return d;
+      }
+  
+      let [dd, mm, yy] = parts.map(p => p.trim());
+      // 3) Two-digit year → assume 20xx
+      if (yy.length === 2) yy = '20' + yy;
+  
+      // 4) Now you can safely padStart
+      const day   = dd.padStart(2, '0');
+      const month = mm.padStart(2, '0');
+  
+      return `${yy}-${month}-${day}`;
+    };
+  
+    this.prescription.prescriptionDate  = toIso(this.prescription.prescriptionDate);
+    this.prescription.dispensationDate = toIso(this.prescription.dispensationDate);
+  }
+  
+
+  calculateTotals(): void {
+    const parseNum = (s?: string) =>
+      s ? parseInt(s.replace(/\D+/g,''),10)||0 : 0;
+
+    const totalNum = parseNum(this.prescription.total);
+    const sumPercu = this.prescription.items
+      .map(i => parseNum(i.montantPercu))
+      .reduce((a,b) => a+b, 0);
+
+    const restant = totalNum - sumPercu;
+    this.prescription.mtPercu = sumPercu.toLocaleString('fr-FR');
+    this.prescription.mtRes   = restant.toLocaleString('fr-FR');
+    this.calculateTotalInWords();
   }
 
+  ngOnInit() {
+    // Only reset flags here, do NOT read router state any more:
+    this.isEditMode      = false;
+    this.showStatusAlert = false;
+  }
 
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['prescription'] && this.prescription) {
+      // whenever the container feeds us a new prescription…
+      this.normalizeDates();
+      this.calculateTotals();
+    }
+  }
+  
   toggleEditMode(): void {
     if (this.isEditMode) {
-      // Save changes when exiting edit mode
-      this.showStatusAlert = true;
+      // 1) leave edit mode
       this.isEditMode = false;
-      // Auto-hide status message after 3 seconds
+  
+      // 2) push the changes to the back-end
+      this.saveToDb();
+  
+      // 3) show a “saved” alert
+      this.showStatusAlert = true;
       setTimeout(() => this.showStatusAlert = false, 3000);
     } else {
-      // Enter edit mode
-      this.isEditMode = true;
-      this.showStatusAlert = true;
+      // entering edit mode
+      this.isEditMode      = true;
+      this.showStatusAlert = false;
     }
   }
 
-  /**
-   * Calculate total based on quantity and price
-   */
-  calculateTotal(): void {
-    if (this.ordonnance.quantite && this.ordonnance.prix_unitaire) {
-      this.ordonnance.montant_percu = this.ordonnance.quantite * this.ordonnance.prix_unitaire;
-      this.ordonnance.montant_total = this.ordonnance.montant_percu;
-      
-      // Optional: Convert the amount to words
-      this.convertAmountToWords();
+saveToDb(): void {
+  // 1) build a proper PrescriptionCreate payload from your UI model
+  const payload: PrescriptionCreate = {
+    pharmacyName:      this.prescription.pharmacyName,
+    pharmacyAddress:   this.prescription.pharmacyAddress,
+    pharmacyContact:   this.prescription.pharmacyContact,
+    pharmacyFiscalId:  this.prescription.pharmacyFiscalId,
+    beneficiaryId:     this.prescription.beneficiaryId,
+    patientIdentity:   this.prescription.patientIdentity,
+    prescriberCode:    this.prescription.prescriberCode,
+    prescriptionDate:  this.prescription.prescriptionDate,
+    regimen:           this.prescription.regimen,
+    dispensationDate:  this.prescription.dispensationDate,
+    executor:          this.prescription.executor,
+    pharmacistCnamRef: this.prescription.pharmacistCnamRef,
+    items:             this.prescription.items,
+    total:             this.prescription.total,
+    totalInWords:      this.prescription.totalInWords
+  };
+
+  console.log('📤 Saving prescription:', payload);
+
+  // 2) call the service
+  this.documentsService.savePrescription(payload).subscribe({
+    next: presc => {
+      console.log('✅ Saved prescription:', presc);
+      this.successMessage = 'Ordonnance enregistrée en base !';
+    },
+    error: err => {
+      console.error('❌ Saving prescription failed', err);
+      this.errorMessage = 'Échec de l’enregistrement.';
     }
+  });
+}
+
+  goBack() {
+    this.router.navigate(['/']);
   }
 
-  /**
-   * Convert the numerical amount to words (French)
-   * This is a simplistic implementation; could be expanded for more accuracy
-   */
-  convertAmountToWords(): void {
-    if (this.ordonnance.montant_total) {
-      const amount = this.ordonnance.montant_total;
-      this.ordonnance.montant_en_lettres = `${amount} Dinars Tunisiens`;
-      // In a real implementation, you'd use a proper number-to-words library
-      // or implement a comprehensive algorithm
-    }
+  goToBulletin() {
+    this.router.navigate(['/extracted/tabs']);
   }
 
-  /**
-   * Save the prescription data
-   */
-  
-
-  saveOrdonnance(): void {
-    this.documentsService.saveOrdonnanceData(this.ordonnance).subscribe({
-      next: (savedData) => {
-        this.successMessage = 'Ordonnance enregistrée avec succès';
-        this.ordonnanceId = savedData.id; // Assuming the API returns the ID
-        this.isEditing = true;
-      },
-      error: (error) => {
-        this.errorMessage = 'Erreur lors de l\'enregistrement de l\'ordonnance';
-        console.error('Error saving ordonnance:', error);
-      }
-    });
-  }
-
-
-  /**
-   * Process the selected file with OCR
-   */
-  processFile(): void {
-    if (!this.uploadedFile) return;
-  
-    this.processingFile = true;
-    this.errorMessage = '';
-    this.successMessage = '';
-  
-    this.documentsService.processOrdonnance(this.uploadedFile).subscribe({
-      next: (result) => {
-        this.processingFile = false;
-        this.successMessage = 'Ordonnance traitée avec succès';
-        
-        console.log('Raw ordonnance data from API:', result);
-        
-        if (result) {
-          // Clear all previous values to avoid mixing old and new data
-          Object.keys(this.ordonnance).forEach(key => {
-            if (typeof this.ordonnance[key] === 'number') {
-              this.ordonnance[key] = null;
-            } else {
-              this.ordonnance[key] = '';
-            }
-          });
-          
-          // Explicitly map each field from the result to our model
-          // This ensures we handle both string and numeric fields correctly
-          if (result.nom_pharmacie) this.ordonnance.nom_pharmacie = result.nom_pharmacie;
-          if (result.adresse_pharmacie) this.ordonnance.adresse_pharmacie = result.adresse_pharmacie;
-          if (result.telephone_fax) this.ordonnance.telephone_fax = result.telephone_fax;
-          if (result.matricule_fiscale) this.ordonnance.matricule_fiscale = result.matricule_fiscale;
-          
-          if (result.id_beneficiaire) this.ordonnance.id_beneficiaire = result.id_beneficiaire;
-          if (result.nom_malade) this.ordonnance.nom_malade = result.nom_malade;
-          if (result.code_prescripteur) this.ordonnance.code_prescripteur = result.code_prescripteur;
-          if (result.date_prescription) this.ordonnance.date_prescription = result.date_prescription;
-          if (result.regime) this.ordonnance.regime = result.regime;
-          if (result.date_dispensation) this.ordonnance.date_dispensation = result.date_dispensation;
-          if (result.code_executeur) this.ordonnance.code_executeur = result.code_executeur;
-          if (result.reference_cnam) this.ordonnance.reference_cnam = result.reference_cnam;
-          
-          if (result.code_pct) this.ordonnance.code_pct = result.code_pct;
-          if (result.produit) this.ordonnance.produit = result.produit;
-          if (result.forme) this.ordonnance.forme = result.forme;
-          
-          // Handle numeric fields
-          if (result.quantite) this.ordonnance.quantite = parseInt(result.quantite);
-          
-          // For price fields that may have comma as decimal separator
-          if (result.prix_unitaire) {
-            const price = typeof result.prix_unitaire === 'string' 
-              ? parseFloat(result.prix_unitaire.replace(',', '.'))
-              : result.prix_unitaire;
-            this.ordonnance.prix_unitaire = price;
-          }
-          
-          if (result.montant_percu) {
-            const amount = typeof result.montant_percu === 'string'
-              ? parseFloat(result.montant_percu.replace(',', '.'))
-              : result.montant_percu;
-            this.ordonnance.montant_percu = amount;
-          }
-          
-          if (result.nio) this.ordonnance.nio = result.nio;
-          if (result.pr_lot) this.ordonnance.pr_lot = result.pr_lot;
-          
-          if (result.montant_total) this.ordonnance.montant_total = result.montant_total;
-          if (result.montant_en_lettres) this.ordonnance.montant_en_lettres = result.montant_en_lettres;
-          
-          // Calculate total if we have quantity and price but no total
-          if (this.ordonnance.quantite && this.ordonnance.prix_unitaire && !this.ordonnance.montant_total) {
-            this.calculateTotal();
-          }
-          
-          // Log the final mapped object
-          console.log('Final mapped ordonnance object:', {...this.ordonnance});
-        }
-      },
-      error: (error) => {
-        this.processingFile = false;
-        this.errorMessage = 'Erreur lors du traitement de l\'ordonnance';
-        console.error('Error processing ordonnance:', error);
-      }
-    });
-  }
-
-  /**
-   * Upload the ordonnance
-   */
-  uploadOrdonnance(): void {
-    if (!this.uploadedFile) {
-      this.errorMessage = 'Veuillez sélectionner un fichier';
-      return;
-    }
-
-    this.errorMessage = '';
-    this.successMessage = '';
-
-    this.documentsService.uploadOrdonnances([this.uploadedFile]).subscribe({
-      next: (result) => {
-        this.successMessage = 'Ordonnance téléchargée avec succès';
-      },
-      error: (error) => {
-        this.errorMessage = 'Erreur lors du téléchargement de l\'ordonnance';
-        console.error('Error uploading ordonnance:', error);
-      }
-    });
-  }
-
-  /**
-   * Switch to a different document tab
-   */
-  selectTab(index: number): void {
-    this.selectedIndex = index;
-    
-    // If files contain relevant data, map directly to ordonnance object
-    if (this.files[index]) {
-      const docData = this.files[index];
-      
-      // Check if this is an ordonnance object with the expected structure
-      if (docData && typeof docData === 'object') {
-        console.log('Mapping file data to ordonnance:', docData);
-        
-        // Direct mapping (if docData has flat structure like your example JSON)
-        Object.keys(docData).forEach(key => {
-          if (this.ordonnance.hasOwnProperty(key) && docData[key] !== null && docData[key] !== undefined) {
-            this.ordonnance[key] = docData[key];
-          }
-        });
-        
-        // Or handle nested structure if that's what's coming from your backend
-        // This is the fallback for your current structure
-
-        
-        if (docData.patient) {
-          this.ordonnance.nom_malade = docData.patient.lastName || '';
-          if (docData.patient.firstName) {
-            this.ordonnance.nom_malade = `${docData.patient.firstName} ${this.ordonnance.nom_malade}`.trim();
-          }
-          this.ordonnance.id_beneficiaire = docData.patient.id || '';
-        }
-        
-        // If there is pharmacy info, populate pharmacy fields
-        if (docData.pharmacy) {
-          this.ordonnance.nom_pharmacie = docData.pharmacy.name || '';
-          this.ordonnance.adresse_pharmacie = docData.pharmacy.address || '';
-          this.ordonnance.telephone_fax = docData.pharmacy.phone || '';
-          this.ordonnance.matricule_fiscale = docData.pharmacy.fiscalId || '';
-        }
-        
-        // If there is prescription info, populate those fields
-        if (docData.prescription) {
-          this.ordonnance.date_prescription = docData.prescription.date || '';
-          this.ordonnance.code_prescripteur = docData.prescription.doctorId || '';
-        }
-      }
-    }
-  }
-  logChange(field: string, value: any): void {
-    console.log(`Field ${field} changed to:`, value);
-    this.ordonnance[field] = value;
+  goToPrescription() {
+    this.router.navigate(['/prescription']);
   }
 }

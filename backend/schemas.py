@@ -1,9 +1,50 @@
-#Schemas
-
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel
 
+# ── Your existing Prescription/PrescriptionItem ──
+class PrescriptionItem(BaseModel):
+    codePCT: str
+    produit: str
+    forme: str
+    qte: str
+    puv: str
+    montantPercu: str
+    nio: str
+    prLot: str
+
+class PrescriptionBase(BaseModel):
+    pharmacyName: str
+    pharmacyAddress: Optional[str]
+    pharmacyContact: Optional[str]
+    pharmacyFiscalId: Optional[str]
+
+    beneficiaryId: Optional[str]
+    patientIdentity: str
+    prescriberCode: Optional[str]
+    prescriptionDate: Optional[str]
+    regimen: Optional[str]
+    dispensationDate: Optional[str]
+
+    executor: Optional[str]
+    pharmacistCnamRef: Optional[str]
+
+    items: List[PrescriptionItem]
+    total: Optional[str]
+    totalInWords: Optional[str]
+
+class PrescriptionCreate(PrescriptionBase):
+    beneficiaryId: str
+
+class Prescription(PrescriptionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+# ── Your existing Bulletin ──
 class BulletinBase(BaseModel):
     prenom: Optional[str] = None
     nom: Optional[str] = None
@@ -25,7 +66,7 @@ class BulletinBase(BaseModel):
     patientType: Optional[str] = None
 
 class BulletinCreate(BulletinBase):
-    pass
+    identifiantUnique: str 
 
 class Bulletin(BulletinBase):
     id: int
@@ -35,67 +76,7 @@ class Bulletin(BulletinBase):
     class Config:
         orm_mode = True
 
-class FileUploadBase(BaseModel):
-    filename: str
-    original_name: str
-    path: str
-    type: str  
-
-
-class OrdonnanceBase(BaseModel):
-    nom_pharmacie: Optional[str] = None
-    adresse_pharmacie: Optional[str] = None
-    telephone_fax: Optional[str] = None
-    matricule_fiscale: Optional[str] = None
-
-    id_beneficiaire: Optional[str] = None
-    nom_malade: Optional[str] = None
-    code_prescripteur: Optional[str] = None
-    date_prescription: Optional[str] = None
-    regime: Optional[str] = None
-    date_dispensation: Optional[str] = None
-    code_executeur: Optional[str] = None
-    reference_cnam: Optional[str] = None
-
-    code_pct: Optional[str] = None
-    produit: Optional[str] = None
-    forme: Optional[str] = None
-    quantite: Optional[int] = None
-    prix_unitaire: Optional[float] = None
-    montant_percu: Optional[float] = None
-    nio: Optional[str] = None
-    pr_lot: Optional[str] = None
-
-    montant_total: Optional[float] = None
-    montant_en_lettres: Optional[str] = None
-
-
-class OrdonnanceCreate(OrdonnanceBase):
-    pass
-
-
-class Ordonnance(OrdonnanceBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        orm_mode = True
-
-
-
-
-
-class FileUploadCreate(FileUploadBase):
-    pass
-
-class FileUpload(FileUploadBase):
-    id: int
-    uploaded_at: datetime
-
-    class Config:
-        orm_mode = True
-
+# ── FileUpload / UploadResponse ──
 class UploadedFileInfo(BaseModel):
     id: int
     filename: str
@@ -105,4 +86,44 @@ class UploadedFileInfo(BaseModel):
 class UploadResponse(BaseModel):
     message: str
     uploaded_files: List[UploadedFileInfo]
-    failed_uploads: Optional[List[dict]] = None
+
+# ── Patient & relationships ──
+class PatientBase(BaseModel):
+    first_name: str
+    last_name: str
+
+class PatientCreate(PatientBase):
+    pass
+
+class Patient(PatientBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+# Now extend your DB-ready schemas with patient_id
+class BulletinInDB(Bulletin):
+    id: int
+    patient_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class PrescriptionInDB(Prescription):
+    id: int
+    patient_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+# Finally, a wrapper that includes both lists
+class PatientWithDocs(Patient):
+    bulletins: List[BulletinInDB]       = []
+    prescriptions: List[PrescriptionInDB] = []
+    

@@ -1,42 +1,80 @@
-import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Output, OnInit } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { Component, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { CommonModule }  from '@angular/common';
+import { FormsModule }   from '@angular/forms';
+import { RouterModule }  from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
-import { Router, ActivatedRoute } from '@angular/router';
+type TableRow = { [colKey: string]: string };
 
 @Component({
   selector: 'app-bulletin',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterModule],
   templateUrl: './bulletin.component.html',
   styleUrls: ['./bulletin.component.css'],
 })
 export class BulletinComponent implements OnInit {
-  @Output() dataVerified = new EventEmitter<any>();
+  @Input() data!: any; // this will hold the parsed JSON data
 
-  files: any[] = [];
-  selectedIndex = 0;
-
+    
+  private mapRows(rows: any[], keys: string[]): TableRow[] {
+    return (rows || []).map(r => {
+      const obj: TableRow = {};
+      for (const k of keys) {
+        obj[k] = (r[k] ?? '').toString();
+      }
+      return obj;
+    });
+  }
+  
   formData = {
-    id: null as number | null,
-    prenom: '',
-    nom: '',
-    adresse: '',
-    codePostal: '',
-    prenomMalade: '',
-    nomMalade: '',
-    assureSocial: false,
-    conjoint: false,
-    enfant: false,
-    ascendant: false,
-    dateNaissance: '',
-    numTel: '',
-    refDossier: '',
+    // page-1 / insured
+    id:                null as number|null,
+    prenom:            '',
+    nom:               '',
+    adresse:           '',
+    codePostal:        '',
+    refDossier:        '',
     identifiantUnique: '',
-    cnss: false,
-    cnrps: false,
-    convbi: false,
-    patientType: 'self'
+    
+    cnss:              false,
+    cnrps:             false,
+    convbi:            false,
+    
+    // page-1 / patient
+    assureSocial:      false,
+    conjoint:          false,
+    enfant:            false,
+    ascendant:         false,
+    prenomMalade:      '',
+    nomMalade:         '',
+    dateNaissance:     '',
+    numTel:            '',
+    nomPrenomMalade:   '',
+    
+    // 12-box ID splitter
+    identifiant:       Array(12).fill(''),
+    
+    // page-1 left tables
+    consultations:      [] as TableRow[],
+    protheses:          [] as TableRow[],
+    
+    // page-2 checks & fields
+    apci:                false,
+    mo:                  false,
+    hosp:                false,
+    grossesse:           false,
+    codeApci:            '',
+    dateAccouchement:    '' as string| null,
+    
+    // page-2 tables
+    visites:            [] as TableRow[],
+    actesMedicaux:      [] as TableRow[],
+    actesParam:         [] as TableRow[],
+    biologie:           [] as TableRow[],
+    hospitals:          [] as TableRow[],
+    pharmacie:          [] as TableRow[],
+
+    patientType:         'self',
   };
 
   identifiant: string[] = Array(12).fill('');
@@ -44,76 +82,94 @@ export class BulletinComponent implements OnInit {
   isEditMode = false;
   showStatusAlert = false;
 
-  constructor(
-    private router: Router,
-    private route: ActivatedRoute,
-    private documentsService: DocumentsService
-  ) {}
+  constructor(private documentsService: DocumentsService) {}
 
-  ngOnInit() {
-    // Try navigation state first, fallback to history.state
-    const navState = this.router.getCurrentNavigation()?.extras.state
-                   || history.state;
-    this.files = navState?.files || [];
-    if (!this.files.length) {
-      // nothing to show → send them back
-      this.router.navigate(['/']);
-      return;
+  ngOnInit(): void {
+  }
+  
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && this.data) {
+      this.populateForm(this.data);
     }
-    this.selectTab(0);
   }
 
-  /** Pull nested OCR result into your flat formData */
-  populateForm(parsed: any): void {
-    // 1) Set everything to your defaults based on the payload…
+  private populateForm(parsed: any): void {
+    // 1) clear any previous banner
+    this.showStatusAlert = false;
+  
+    // 2) alias
+    const src = parsed || {};
+  
+    // 3) rebuild formData (everything except the identifiant 12-box)
     this.formData = {
-      id:                this.formData.id,
-      prenom:            parsed.insured.firstName    || '',
-      nom:               parsed.insured.lastName     || '',
-      adresse:           parsed.insured.address      || '',
-      codePostal:        parsed.insured.postalCode   || '',
-      refDossier:        parsed.header.dossierId     || '',
-      identifiantUnique: parsed.insured.uniqueId     || '',
-      cnss:              parsed.insured.cnssChecked  || false,
-      cnrps:             parsed.insured.cnrpsChecked || false,
-      convbi:            parsed.insured.conventionChecked || false,
-      prenomMalade:      parsed.patient.firstName    || '',
-      nomMalade:         parsed.patient.lastName     || '',
-      dateNaissance:     parsed.patient.birthDate    || '',
-      numTel:            '',
-      // initialize all four to false, we’ll flip exactly one on next step:
-      assureSocial:      false,
-      conjoint:          false,
-      enfant:            parsed.patient.isChild     || false,
-      ascendant:         false,
-      patientType:       parsed.patient.isChild ? 'enfant' : 'self'
+      ...this.formData,
+  
+      // simple fields
+      prenom:            src.prenom             || '',
+      nom:               src.nom                || '',
+      adresse:           src.adresse            || '',
+      codePostal:        src.codePostal         || '',
+      refDossier:        src.header?.dossierId  || src.refDossier      || '',
+      identifiantUnique: src.identifiantUnique  || '',
+      cnss:              !!src.cnss,
+      cnrps:             !!src.cnrps,
+      convbi:            !!src.convbi,
+      assureSocial:      !!src.assureSocial,
+      conjoint:          !!src.conjoint,
+      enfant:            !!src.enfant,
+      ascendant:         !!src.ascendant,
+      prenomMalade:      src.prenomMalade       || '',
+      nomMalade:         src.nomMalade          || '',
+      dateNaissance:     src.dateNaissance      || '',
+      nomPrenomMalade:   src.nomPrenomMalade    || '',
+  
+      // ── remap each table into exactly the keys your template expects ──
+      consultations: this.mapRows(src.consultationsDentaires    || [], [
+        'date','dent','codeActe','cotation','honoraires','codePs','signature'
+      ]).slice(1),
+      protheses:     this.mapRows(src.prothesesDentaires        || [], [
+        'date','dents','codeActe','cotation','honoraires','codePs','signature'
+      ]).slice(1),
+      visites:       this.mapRows(src.consultationsVisites      || [], [
+        'date','designation','honoraires','codePs','signature'
+      ]),
+      actesMedicaux: this.mapRows(src.actesMedicaux             || [], [
+        'date','designation','honoraires','codePs','signature'
+      ]).slice(1),
+      actesParam:    this.mapRows(src.actesParamed              || [], [
+        'date','designation','honoraires','codePs','signature'
+      ]).slice(1),
+      biologie:      this.mapRows(src.biologie                  || [], [
+        'date','montant','codePs','signature'
+      ]).slice(1),
+      hospitals:     this.mapRows(src.hospitalisation           || [], [
+        'date','codeHosp','forfait','codeClinique','signature'
+      ]).slice(1),
+      pharmacie:     this.mapRows(src.pharmacie                 || [], [
+        'date','montant','codePs','signature'
+      ]).slice(1),
+  
+      // page-2 checks & extras
+      apci:             !!src.apci,
+      mo:               !!src.mo,
+      hosp:             !!src.hospitalisationCheck,
+      grossesse:        !!src.suiviGrossesseCheck,
+      codeApci:         src.codeApci           || '',
+      dateAccouchement: src.datePrevu          || null,
+  
+      // preserve dropdown / radio selection
+      patientType:      this.formData.patientType
     };
   
-    // 2) Now override exactly one of the four “who’s the patient” flags:
-    switch (this.formData.patientType) {
-      case 'self':
-        this.formData.assureSocial = true;
-        break;
-      case 'conjoint':
-        this.formData.conjoint = true;
-        break;
-      case 'enfant':
-        this.formData.enfant = true;
-        break;
-      case 'ascendant':
-        this.formData.ascendant = true;
-        break;
-    }
+    // 4) split out the 12-box identifiant
+    this.identifiant = Array.from(
+      { length: 12 },
+      (_, i) => (this.formData.identifiantUnique || '')[i] || ''
+    );
   
-    // 3) Split the 12-digit ID into the little boxes
-    const s = this.formData.identifiantUnique;
-    this.identifiant = Array.from({ length: 12 }, (_, i) => s[i] || '');
-  }
-  /** Switch to a different parsed document tab */
-  selectTab(index: number): void {
-    this.selectedIndex = index;
-    this.populateForm(this.files[index]);
-  }
+    // 5) auto‐hide the “saved” banner
+    setTimeout(() => this.showStatusAlert = false, 3_000);
+  }  
 
   /** Only one patient type allowed, and only in edit mode */
   setPatientType(type: 'assureSocial' | 'conjoint' | 'enfant' | 'ascendant'): void {
@@ -136,11 +192,16 @@ export class BulletinComponent implements OnInit {
 
   saveChanges(): void {
     // 1) leave edit mode & show the alert
-    this.isEditMode = false;
+    this.isEditMode      = false;
     this.showStatusAlert = true;
   
     // 2) build the corrected payload
-    const payload = this.getCompleteFormData();
+    //    (spread in everything from formData, then overwrite
+    //     identifiantUnique with the joined boxes)
+    const payload = {
+      ...this.formData,
+      identifiantUnique: this.identifiant.join('')  // e.g. "2369-0685-84-0-0"
+    };
   
     // 3) send it to the server
     this.documentsService.saveBulletinData(payload).subscribe({
@@ -149,16 +210,15 @@ export class BulletinComponent implements OnInit {
         // stash it into formData so future calls become PUTs:
         this.formData.id = saved.id;
   
-        // optional: replace your “Changes saved” alert with something fancier
-        console.log('Saved to DB:', saved);
+        console.log('✅ Saved to DB:', saved);
       },
       error: err => {
-        console.error('Error saving:', err);
+        console.error('❌ Error saving bulletin:', err);
         alert('Oops! Could not save your corrections. Please try again.');
       }
     });
   
-    // 4) auto-hide the status message in 3 s
+    // 4) hide the status message after a bit
     setTimeout(() => this.showStatusAlert = false, 3000);
   }
 
@@ -195,4 +255,5 @@ export class BulletinComponent implements OnInit {
       this.formData.cnrps = false;
     }
   }
+
 }
