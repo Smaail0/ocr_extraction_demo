@@ -132,7 +132,7 @@ export class BulletinComponent implements OnInit {
       ]).slice(1),
       visites:       this.mapRows(src.consultationsVisites      || [], [
         'date','designation','honoraires','codePs','signature'
-      ]),
+      ]).slice(1),
       actesMedicaux: this.mapRows(src.actesMedicaux             || [], [
         'date','designation','honoraires','codePs','signature'
       ]).slice(1),
@@ -191,25 +191,60 @@ export class BulletinComponent implements OnInit {
   }
 
   saveChanges(): void {
-    // 1) leave edit mode & show the alert
+    // 1) leave edit mode & show the “changes saved” banner
     this.isEditMode      = false;
     this.showStatusAlert = true;
   
-    // 2) build the corrected payload
-    //    (spread in everything from formData, then overwrite
-    //     identifiantUnique with the joined boxes)
+    // 2) build a payload matching your Pydantic model exactly
     const payload = {
-      ...this.formData,
-      identifiantUnique: this.identifiant.join('')  // e.g. "2369-0685-84-0-0"
+      // ○ simple scalar fields
+      prenom:            this.formData.prenom,
+      nom:               this.formData.nom,
+      adresse:           this.formData.adresse,
+      codePostal:        this.formData.codePostal,
+      refDossier:        this.formData.refDossier,
+      identifiantUnique: this.identifiant.join(''),
+  
+      cnss:              this.formData.cnss,
+      cnrps:             this.formData.cnrps,
+      convbi:            this.formData.convbi,
+  
+      // ○ the eight JSON table columns
+      consultationsDentaires: this.formData.consultations,
+      prothesesDentaires:     this.formData.protheses,
+      consultationsVisites:   this.formData.visites,
+      actesMedicaux:          this.formData.actesMedicaux,
+      actesParamed:           this.formData.actesParam,
+      biologie:               this.formData.biologie,
+      hospitalisation:        this.formData.hospitals,
+      pharmacie:              this.formData.pharmacie,
+  
+      // ○ healthcare-professional section
+      apci:                   this.formData.apci,
+      mo:                     this.formData.mo,
+      hosp:                   this.formData.hosp,
+      grossesse:              this.formData.grossesse,
+      codeApci:               this.formData.codeApci,
+      dateAccouchement:       this.formData.dateAccouchement,
+  
+      // ○ patient type & patient info
+      assureSocial:           this.formData.assureSocial,
+      conjoint:               this.formData.conjoint,
+      enfant:                 this.formData.enfant,
+      ascendant:              this.formData.ascendant,
+  
+      prenomMalade:           this.formData.prenomMalade,
+      nomMalade:              this.formData.nomMalade,
+      dateNaissance:          this.formData.dateNaissance,
+      numTel:                 this.formData.numTel,
+      nomPrenomMalade:        this.formData.nomPrenomMalade
     };
   
-    // 3) send it to the server
+    // 3) send it up
     this.documentsService.saveBulletinData(payload).subscribe({
       next: saved => {
-        // if this was a new POST, the backend will return its new `id`
-        // stash it into formData so future calls become PUTs:
+        // if we got back an `id`, store it so future saves do PUT instead of POST
         this.formData.id = saved.id;
-  
         console.log('✅ Saved to DB:', saved);
       },
       error: err => {
@@ -218,10 +253,10 @@ export class BulletinComponent implements OnInit {
       }
     });
   
-    // 4) hide the status message after a bit
+    // 4) auto-hide the banner
     setTimeout(() => this.showStatusAlert = false, 3000);
   }
-
+  
   onSubmit(): void {
     const payload = this.getCompleteFormData();
     this.documentsService.saveBulletinData(payload).subscribe({

@@ -36,7 +36,6 @@ export class PrescriptionComponent implements OnInit {
   formData = {
     refDossier: ''
   };
-  // ← inject ActivatedRoute here
   constructor(
     private router: Router,
     private route: ActivatedRoute,

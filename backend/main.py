@@ -2,7 +2,10 @@
 from datetime import datetime
 import os, re, shutil
 from typing import List
-
+from fastapi import Body
+import tempfile
+from pathlib import Path
+import cv2
 from fastapi import FastAPI, File, HTTPException, Depends, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import desc
@@ -11,8 +14,8 @@ from .schemas import PatientWithDocs
 from . import models, schemas
 from .database import engine, SessionLocal
 from .services.azure import classify_form_on_bytes, parse_bulletin_ocr, parse_prescription_ocr
+from azure_model.pipeline import classify_form
 
-# ── Create or upgrade your tables (make sure Alembic has run the migration too) ──
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Medical Documents API")
@@ -47,29 +50,39 @@ def get_or_create_patient_by_name(db: Session, first: str, last: str) -> models.
         db.refresh(patient)
     return patient
 
-@app.get("/patients/{first}/{last}", response_model=schemas.PatientWithDocs)
-def read_patient(first: str, last: str, db: Session = Depends(get_db)):
-    patient = (
-      db.query(models.Patient)
-        .filter_by(first_name=first.title(), last_name=last.title())
-        .options(joinedload(models.Patient.bulletins),
-                 joinedload(models.Patient.prescriptions))
-        .first()
-    )
-    if not patient:
-        raise HTTPException(404, "Patient not found")
-    return patient
-
 # ── OCR Parse endpoint ──
 @app.post("/documents/parse")
 async def parse_document(file: UploadFile = File(...)):
-    contents = await file.read()
-    form_key = await classify_form_on_bytes(contents, file.filename)
+    data = await file.read()
+    suffix = Path(file.filename).suffix or ".pdf"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(data)
+        tmp_path = Path(tmp.name)
 
-    if form_key == "prescription":
-        parsed = await parse_prescription_ocr(contents, file.filename)
-    else:
-        parsed = await parse_bulletin_ocr(contents, file.filename)
+    # LOCAL classification only
+    form_key = classify_form(
+        scan_path=tmp_path,
+        presc_hdr_img=cv2.imread("./assets/ordonnance_header1.png"),
+        bullet_hdr_img=cv2.imread("./assets/bulletin_de_soin_header1.png"),
+        min_matches=15,
+        margin=8
+    )
+    tmp_path.unlink()
+
+    if form_key == "unknown":
+        raise HTTPException(
+            status_code=400,
+            detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
+        )
+
+    # now dispatch to Azure
+    try:
+        if form_key == "prescription":
+            parsed = await parse_prescription_ocr(data, file.filename)
+        else:
+            parsed = await parse_bulletin_ocr(data, file.filename)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
 
     return {"header": {"documentType": form_key}, **parsed}
 
@@ -102,14 +115,14 @@ def create_bulletin(
     if not bulletin.prenom or not bulletin.nom:
         raise HTTPException(400, "Missing first or last name in bulletin")
 
-    # 1) find or create the patient by name
+    # 1) find or create the patient
     patient = get_or_create_patient_by_name(db, bulletin.prenom, bulletin.nom)
 
-    # 2) create the bulletin row
-    data = bulletin.dict(exclude={"identifiantUnique"})
+    # 2) grab only the scalar fields that your model actually defines
+    data = bulletin.model_dump()  
+
     db_bulletin = models.Bulletin(
         **data,
-        identifiantUnique=bulletin.identifiantUnique,
         patient_id=patient.id
     )
     db.add(db_bulletin)
@@ -191,12 +204,19 @@ async def get_all_bulletins(db: Session = Depends(get_db)):
     return [{"id": f.id, "filename": f.filename, "original_name": f.original_name, "uploaded_at": f.uploaded_at} for f in files]
 
 @app.put("/bulletin/{bulletin_id}", response_model=schemas.Bulletin)
-def update_bulletin(bulletin_id: int, bulletin: schemas.BulletinCreate, db: Session = Depends(get_db)):
-    db_b = db.query(models.Bulletin).get(bulletin_id)
+def update_bulletin(
+    bulletin_id: int,
+    bulletin: schemas.BulletinCreate = Body(...),
+    db: Session = Depends(get_db)
+):
+    db_b = db.get(models.Bulletin, bulletin_id)
     if not db_b:
         raise HTTPException(404, "Bulletin not found")
-    for k,v in bulletin.dict().items():
-        setattr(db_b, k, v)
+
+    # Pydantic v2 → use model_dump()
+    for key, val in bulletin.model_dump().items():
+        setattr(db_b, key, val)
+
     db.commit()
     db.refresh(db_b)
     return db_b
@@ -204,6 +224,12 @@ def update_bulletin(bulletin_id: int, bulletin: schemas.BulletinCreate, db: Sess
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+@app.on_event("startup")
+def reset_database_on_startup():
+    models.Base.metadata.drop_all(bind=engine)
+    models.Base.metadata.create_all(bind=engine)
 
 if __name__ == "__main__":
     import uvicorn

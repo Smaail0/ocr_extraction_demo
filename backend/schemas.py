@@ -1,8 +1,7 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
 
-# ── Your existing Prescription/PrescriptionItem ──
 class PrescriptionItem(BaseModel):
     codePCT: str
     produit: str
@@ -44,26 +43,47 @@ class Prescription(PrescriptionBase):
     class Config:
         orm_mode = True
 
-# ── Your existing Bulletin ──
 class BulletinBase(BaseModel):
-    prenom: Optional[str] = None
-    nom: Optional[str] = None
-    adresse: Optional[str] = None
-    codePostal: Optional[str] = None
-    prenomMalade: Optional[str] = None
-    nomMalade: Optional[str] = None
-    assureSocial: bool = False
-    conjoint: bool = False
-    enfant: bool = False
-    ascendant: bool = False
-    dateNaissance: Optional[str] = None
-    numTel: Optional[str] = None
-    refDossier: Optional[str] = None
+    prenom:            Optional[str] = None
+    nom:               Optional[str] = None
+    adresse:           Optional[str] = None
+    codePostal:        Optional[str] = None
+    prenomMalade:      Optional[str] = None
+    nomMalade:         Optional[str] = None
+    assureSocial:      bool = False
+    conjoint:          bool = False
+    enfant:            bool = False
+    ascendant:         bool = False
+    dateNaissance:     Optional[str] = None
+    numTel:            Optional[str] = None
+    refDossier:        Optional[str] = None
     identifiantUnique: Optional[str] = None
-    cnss: bool = False
-    cnrps: bool = False
-    convbi: bool = False
-    patientType: Optional[str] = None
+    cnss:              bool = False
+    cnrps:             bool = False
+    convbi:            bool = False
+    patientType:       Optional[str] = None
+
+    consultationsDentaires: List[Dict[str,str]] = Field(default_factory=list, alias="consultationsDentaires")
+    prothesesDentaires:     List[Dict[str,str]] = Field(default_factory=list, alias="prothesesDentaires")
+    consultationsVisites:   List[Dict[str,str]] = Field(default_factory=list, alias="consultationsVisites")
+    actesMedicaux:          List[Dict[str,str]] = Field(default_factory=list, alias="actesMedicaux")
+    actesParamed:           List[Dict[str,str]] = Field(default_factory=list, alias="actesParamed")
+    biologie:               List[Dict[str,str]] = Field(default_factory=list, alias="biologie")
+    hospitalisation:        List[Dict[str,str]] = Field(default_factory=list, alias="hospitalisation")
+    pharmacie:              List[Dict[str,str]] = Field(default_factory=list, alias="pharmacie")
+
+    apci:             bool = False
+    mo:               bool = False
+    hosp:             bool = False
+    grossesse:        bool = False
+
+    codeApci:         Optional[str] = Field(None, alias="codeApci")
+    dateAccouchement: Optional[str] = Field(None, alias="dateAccouchement")
+    
+    class Config:
+        validate_by_name = True
+        from_attributes = True
+        
 
 class BulletinCreate(BulletinBase):
     identifiantUnique: str 
@@ -74,7 +94,7 @@ class Bulletin(BulletinBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ── FileUpload / UploadResponse ──
 class UploadedFileInfo(BaseModel):
@@ -101,9 +121,8 @@ class Patient(PatientBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-# Now extend your DB-ready schemas with patient_id
 class BulletinInDB(Bulletin):
     id: int
     patient_id: int
@@ -111,7 +130,7 @@ class BulletinInDB(Bulletin):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class PrescriptionInDB(Prescription):
     id: int
@@ -120,9 +139,8 @@ class PrescriptionInDB(Prescription):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-# Finally, a wrapper that includes both lists
 class PatientWithDocs(Patient):
     bulletins: List[BulletinInDB]       = []
     prescriptions: List[PrescriptionInDB] = []

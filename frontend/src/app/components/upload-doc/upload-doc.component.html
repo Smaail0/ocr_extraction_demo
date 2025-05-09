@@ -4,7 +4,13 @@
   <app-stepper *ngIf="mode === 'route'" [step]="0"></app-stepper>
 
   <div class="upload-container">
+
+    <div *ngIf="serverError" class="alert alert-danger w-100 mx-0 mb-3">
+      {{ serverError }}
+    </div>
+
     <div class="card shadow-lg">
+      
       <div
         class="card-header d-flex justify-content-between align-items-center"
       >
@@ -63,7 +69,7 @@
             <ul class="mb-0">
               <li>Maximum {{ MAX_FILES }} files</li>
               <li>Accepted formats: PDF, JPG, PNG</li>
-            </ul>
+            </ul>            
           </div>
 
           <!-- Selected Files (with drag-to-reorder, preview, per-file status) -->

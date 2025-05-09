@@ -3,9 +3,7 @@ import sys
 import argparse
 import logging
 from pathlib import Path
-import tempfile
-
-import json
+import tempfile, os
 import cv2
 import re
 import numpy as np
@@ -13,7 +11,7 @@ from pdf2image import convert_from_path
 from dotenv import load_dotenv
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
-from typing import Optional
+from typing import Optional, List, Dict
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 load_dotenv()
@@ -36,26 +34,6 @@ def analyze_document(scan_path: Path, model_id: str, pages: list[str]):
             pages=pages
         )
     return poller.result()
-
-
-def classify_form_on_bytes(file_bytes: bytes, filename: str) -> str:
-    """ Write bytes to disk, load headers, run classify_form, clean up. """
-    suffix = Path(filename).suffix or ".pdf"
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
-        # load your header images once here
-        presc_hdr  = cv2.imread("assets/ordonnance_header1.png")
-        bullet_hdr = cv2.imread("assets/bulletin_de_soin_header1.png")
-        if presc_hdr is None or bullet_hdr is None:
-            raise RuntimeError("Could not load header images")
-        # call your existing classify_form()
-        return classify_form(tmp_path, presc_hdr, bullet_hdr, poppler=None)
-    finally:
-        if tmp_path and tmp_path.exists():
-            tmp_path.unlink()
 
 def dump_results(result, output_txt: Path, min_conf: float = 0.1):
 
@@ -121,60 +99,60 @@ def count_good_matches(desT, desS, ratio=0.75):
     matches = bf.knnMatch(desT, desS, k=2)
     return sum(1 for m,n in matches if m.distance < ratio * n.distance)
 
+
 def classify_form(
     scan_path: Path,
     presc_hdr_img: np.ndarray,
     bullet_hdr_img: np.ndarray,
-    poppler: str | None = None
+    poppler: str | None = None,
+    min_matches: int = 15,
+    margin: int      = 8
 ) -> str:
     """
-    Renders all pages and returns 'prescription' or 'bulletin_de_soin'
-    based on which header patch matches best.
+    ORB‐based classification with absolute & relative thresholds.
+    Returns 'prescription', 'bulletin_de_soin', or 'unknown'.
     """
-    # precompute descriptors for the two header templates
+    # 1) prepare templates
     p_gray = cv2.cvtColor(presc_hdr_img, cv2.COLOR_BGR2GRAY)
     b_gray = cv2.cvtColor(bullet_hdr_img, cv2.COLOR_BGR2GRAY)
     _, des_p = detect_and_compute(p_gray)
     _, des_b = detect_and_compute(b_gray)
 
-    best = ("unknown", -1)
-    pages = load_all_pages(scan_path, poppler_path=poppler)
-    for page in pages:
-        g = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
-        _, des_s = detect_and_compute(g)
-        mp = count_good_matches(des_p, des_s)
-        mb = count_good_matches(des_b, des_s)
-        if mp > best[1]:
-            best = ("prescription", mp)
-        if mb > best[1]:
-            best = ("bulletin_de_soin", mb)
+    # 2) scan only first page (headers live on page 1)
+    page = load_all_pages(scan_path, poppler_path=poppler)[0]
+    gray = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
+    _, des_s = detect_and_compute(gray)
 
-    logging.info("▷ classified as %r (best score=%d)", best[0], best[1])
-    return best[0]
+    # 3) count matches
+    mp = count_good_matches(des_p, des_s)
+    mb = count_good_matches(des_b, des_s)
+
+    # 4) absolute floor
+    best = max(mp, mb)
+    if best < min_matches:
+        return "unknown"
+
+    # 5) relative separation
+    if abs(mp - mb) < margin:
+        return "unknown"
+
+    # 6) final
+    return "prescription" if mp > mb else "bulletin_de_soin"
 
 def format_prescription_id(raw: str) -> str:
     # 1) strip everything but digits
     digits = re.sub(r"\D+", "", raw or "")
     # 2) slice into exactly five parts:
     parts = [
-        digits[0:4],   # e.g. "2365"
-        digits[4:8],   # e.g. "0685"
-        digits[8:10],  # e.g. "84"
-        digits[10:11], # e.g. "" if missing
-        digits[11:12], # e.g. "" if missing
+        digits[0:4],
+        digits[4:8],
+        digits[8:10],
+        digits[10:11],
+        digits[11:12],
     ]
     # 3) replace any empty slice with "0"
     parts = [p if p else "0" for p in parts]
     return "-".join(parts)
-
-import tempfile, os
-from pathlib import Path
-from typing import Optional, List, Dict
-
-from pathlib import Path
-import tempfile, os
-from typing import Optional, List, Dict
-import unicodedata
 
 def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
     tmp_path: Optional[Path] = None
@@ -185,18 +163,30 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
             tmp.write(file_bytes)
             tmp_path = Path(tmp.name)
 
-        # ── 2) OCR ───────────────────────────────────────────────────────
-        form_key = classify_form_on_bytes(file_bytes, filename)
+        # ── 2) classify & early‐exit if not bulletin ───────────────────
+        form_key = classify_form(
+            scan_path=tmp_path,
+            presc_hdr_img=cv2.imread("assets/ordonnance_header1.png"),
+            bullet_hdr_img=cv2.imread("assets/bulletin_de_soin_header1.png"),
+            poppler=None,
+            min_matches=10
+)
         if form_key != "bulletin_de_soin":
             raise ValueError(f"Expected bulletin_de_soin, got {form_key!r}")
 
+        # ── 3) call Azure Document Intelligence ────────────────────────
         model_id = os.getenv("BULLETIN_MODEL_ID")
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
-        tables   = result.tables  # ← your 8 Azure tables
+        tables   = result.tables   # ← your 8 Azure tables
 
-        # ── helpers ──────────────────────────────────────────────────────
+        # ── 4) guard: ensure we actually got 8 tables ──────────────────
+        if len(tables) < 8:
+            raise ValueError(f"Expected 8 tables in bulletin but got {len(tables)}; "
+                             "this doesn’t look like a Bulletin de soin.")
+
+        # ── 5) helpers ──────────────────────────────────────────────────
         def txt(k: str) -> Optional[str]:
             fld = f.get(k)
             return fld and (fld.get("valueString") or fld.get("content"))
@@ -211,51 +201,47 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
                 grid[cell.row_index][cell.column_index] = cell.content.strip()
             return grid
 
-        # ── core “by‐index” mapper ───────────────────────────────────────
         def table_to_objects(grid: List[List[str]], cols: List[str]) -> List[Dict[str,str]]:
-            # skip the header row (grid[0]), map each subsequent row
-            out = []
+            out: List[Dict[str,str]] = []
             for row in grid[1:]:
                 obj: Dict[str,str] = {}
                 for idx, key in enumerate(cols):
                     obj[key] = row[idx] if idx < len(row) else ""
                 out.append(obj)
             return out
-        
-        # ── 3) extract all 8 grids ───────────────────────────────────────
+
+        # ── 6) extract & map all eight grids ───────────────────────────
         grids = [extract_grid(tbl) for tbl in tables]
 
-        # ── 4) map into exactly the keys your Angular expects ───────────
         consultations_dentaires = table_to_objects(grids[0], [
             "date","dent","codeActe","cotation","honoraires","codePs","signature"
         ])
-        protheses_dentaires = table_to_objects(grids[1], [
+        protheses_dentaires     = table_to_objects(grids[1], [
             "date","dents","codeActe","cotation","honoraires","codePs","signature"
         ])
-        consultations_visites = table_to_objects(grids[2], [
+        consultations_visites   = table_to_objects(grids[2], [
             "date","designation","honoraires","codePs","signature"
         ])
-        actes_medicaux = table_to_objects(grids[3], [
+        actes_medicaux          = table_to_objects(grids[3], [
             "date","designation","honoraires","codePs","signature"
         ])
-        actes_paramed = table_to_objects(grids[4], [
+        actes_paramed           = table_to_objects(grids[4], [
             "date","designation","honoraires","codePs","signature"
         ])
-        biologie = table_to_objects(grids[5], [
+        biologie                = table_to_objects(grids[5], [
             "date","montant","codePs","signature"
         ])
-        hospitalisation = table_to_objects(grids[6], [
+        hospitalisation         = table_to_objects(grids[6], [
             "date","codeHosp","forfait","codeClinique","signature"
         ])
-        pharmacie = table_to_objects(grids[7], [
+        pharmacie               = table_to_objects(grids[7], [
             "date","montant","codePs","signature"
         ])
 
-        # ── 5) other fields & checks ────────────────────────────────────
+        # ── 7) other fields & checks ───────────────────────────────────
         dossier_id   = txt("id_dossier") or ""
         formatted_id = format_prescription_id(txt("id_unique") or "")
 
-        # insured info
         prenom  = txt("prenom_assure") or ""
         nom     = txt("nom_assure")     or ""
         adresse = txt("adresse_assure") or ""
@@ -264,9 +250,8 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
         cnss_c  = chk("cnss_check")
         conv_c  = chk("convention_check")
 
-        # patient info
-        mal_prenom = txt("prenom_malade")    or ""
-        mal_nom    = txt("nom_malade")       or ""
+        mal_prenom = txt("prenom_malade") or ""
+        mal_nom    = txt("nom_malade")    or ""
         mal_birth  = txt("date_naissance_malade") or ""
         nom_pr_mal = txt("nom_prenom_malade")    or ""
         date_prevu = txt("date_prevu")           or ""
@@ -279,7 +264,7 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
         ascendant_c   = chk("ascendant")
         assure_soc    = cnrps_c or cnss_c
 
-        # ── 6) assemble final dict ──────────────────────────────────────
+        # ── 8) assemble final dict ─────────────────────────────────────
         return {
             "header": {
                 "documentType": form_key,
@@ -333,11 +318,6 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
         if tmp_path and tmp_path.exists():
             tmp_path.unlink()
 
-import os
-import tempfile
-from pathlib import Path
-import cv2
-
 def extract_all_tables(result) -> List[List[List[str]]]:
     """
     Given an Azure DocumentAnalysis result with `result.tables`,
@@ -361,14 +341,7 @@ def analyze_document(scan_path: Path, model_id: str, pages: list[str] | None):
     return poller.result()
 
 def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
-    """
-    Sends prescription bytes to Azure, then:
-      - extracts the 8-column items table (or falls back to `prescription_items`)
-      - extracts the 2-column metadata table (or falls back to raw fields)
-      - splits the `pharmacie` blob into name / address / contact / fiscal ID
-      - pulls executor & CNAM ref
-    Returns a dict ready for your Angular UI.
-    """
+    
     tmp_path: Optional[Path] = None
     try:
         # ─── 1) dump bytes to temp file ────────────────────────────────
@@ -382,6 +355,12 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
+        
+        # ─── GUARD: make sure we got at least one table back ─────────────
+        raw_tables = result.tables
+        if len(raw_tables) < 0:
+            raise ValueError(f"Expected 8 tables but only found {len(tables)}; this doesn't look like a Bulletin de soin.")
+        
 
         logging.info("Processing document fields: %s", list(f.keys()))
         logging.info("Tables found by column count: %s",
@@ -396,6 +375,7 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
 
         # ─── 3) rebuild all tables into (col_count, matrix) ────────────
         tables: list[tuple[int, list[list[str]]]] = []
+           
         for tbl in result.tables:
             mat = [[""] * tbl.column_count for _ in range(tbl.row_count)]
             for cell in tbl.cells:
@@ -548,298 +528,3 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
     finally:
         if tmp_path and tmp_path.exists():
             tmp_path.unlink()
-
-def parse_ordonnance_ocr(file_bytes: bytes, filename: str) -> dict:
-    """
-    Parses a prescription (ordonnance) document using the OCR pipeline.
-    Similar to parse_bulletin_ocr but tailored for prescription fields.
-    """
-    # 1) Drop bytes to a temp file
-    suffix = Path(filename).suffix or ".pdf"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = Path(tmp.name)
-
-    try:
-        # 2) Load header templates once the temp file is on disk
-        presc_hdr = cv2.imread("assets/ordonnance_header1.png")
-        bullet_hdr = cv2.imread("assets/bulletin_de_soin_header1.png")
-        if presc_hdr is None or bullet_hdr is None:
-            raise RuntimeError("❌ Could not load header images – check your paths")
-
-        # 3) Classify form and pick the model
-        form_key = classify_form(
-            scan_path=tmp_path,
-            presc_hdr_img=presc_hdr,
-            bullet_hdr_img=bullet_hdr,
-            poppler=None       # or your Poppler path on Windows
-        )
-        
-        # Always use the ordonnance model for this function
-        model_id = os.getenv("ORDONNANCE_MODEL_ID")
-        if not model_id:
-            raise ValueError("ORDONNANCE_MODEL_ID not set in environment variables")
-
-        # 4) Perform OCR
-        result = analyze_document(tmp_path, model_id=model_id, pages=None)
-        
-        import logging
-        import json
-
-        logging.info(f"Processing file: {filename}")
-        logging.info(f"Form classification result: {form_key}")
-        logging.info(f"Using model ID: {model_id}")
-        
-        # 5) Pull out fields
-        doc = result.documents[0]
-        f = doc.fields
-
-        logging.info(f"OCR Fields: {f}")
-
-        def txt(key: str) -> str | None:
-            fld = f.get(key)
-            if not fld:
-                return None
-            # Custom model returns its text under "valueString"
-            return fld.get("valueString") or fld.get("content")
-
-        def num(key: str) -> float | None:
-            value = txt(key)
-            if not value:
-                return None
-            try:
-                # Replace comma with period for decimal numbers and convert to float
-                return float(value.replace(',', '.'))
-            except ValueError:
-                return None
-
-        def int_val(key: str) -> int | None:
-            value = txt(key)
-            if not value:
-                return None
-            try:
-                return int(value)
-            except ValueError:
-                return None
-
-        # Helper functions for extracting values from nested objects
-        def txt_from_obj(obj, key):
-            if key in obj and "valueString" in obj[key]:
-                return obj[key]["valueString"]
-            return None
-
-        def num_from_obj(obj, key):
-            value = txt_from_obj(obj, key)
-            if value:
-                try:
-                    return float(value.replace(',', '.'))
-                except ValueError:
-                    return None
-            return None
-
-        def int_val_from_obj(obj, key):
-            value = txt_from_obj(obj, key)
-            if value:
-                try:
-                    return int(value)
-                except ValueError:
-                    return None
-            return None
-
-        # 6) Map data to fields based on the actual schema from the OCR model
-        parsed = {
-            "nom_pharmacie": None,
-            "adresse_pharmacie": None,
-            "telephone_fax": None,
-            "matricule_fiscale": None,
-            
-            "id_beneficiaire": None,
-            "nom_malade": None,
-            "code_prescripteur": None,
-            "date_prescription": None,
-            "regime": None,
-            "date_dispensation": None,
-            "code_executeur": None,
-            "reference_cnam": None,
-            
-            "code_pct": None,
-            "produit": None,
-            "forme": None,
-            "quantite": None,
-            "prix_unitaire": None,
-            "montant_percu": None,
-            "nio": None,
-            "pr_lot": None,
-            
-            "montant_total": None,
-            "montant_en_lettres": None,
-        }
-        
-        # Extract ID Beneficiaire directly
-        parsed["id_beneficiaire"] = txt("id_unique")
-        
-        # Extract patient name from 'nom_prenom'
-        parsed["nom_malade"] = txt("nom_prenom")
-        
-        # Extract date fields
-        parsed["date_prescription"] = txt("date")
-        
-        # Extract pharmacy info from the 'pharmacie' field
-        pharmacie_txt = txt("pharmacie")
-        if pharmacie_txt:
-            # Simple split for pharmacy name - first line
-            lines = pharmacie_txt.split('\n')
-            if lines:
-                parsed["nom_pharmacie"] = lines[0].strip()
-            
-            # Look for telephone/fax
-            tel_fax_parts = []
-            for line in lines:
-                if "Tél:" in line:
-                    tel_fax_parts.append(line.strip())
-                if "Fax:" in line:
-                    tel_fax_parts.append(line.strip())
-            
-            if tel_fax_parts:
-                parsed["telephone_fax"] = " - ".join(tel_fax_parts)
-            
-            # Look for matricule fiscale
-            for line in lines:
-                if "Matricule Fisc" in line:
-                    matricule_part = line.split("Matricule Fisc")[1].strip()
-                    parsed["matricule_fiscale"] = matricule_part.strip(" .:")
-                    break
-            
-            # Address - use footer info
-            footer_txt = txt("footer")
-            if footer_txt:
-                parsed["adresse_pharmacie"] = footer_txt
-        
-        # Process medecin_table for additional information
-        medecin_table = f.get("medecin_table", {}).get("valueArray", [])
-        if medecin_table:
-            for row in medecin_table:
-                row_obj = row.get("valueObject", {})
-                col1 = txt_from_obj(row_obj, "COLUMN1")
-                col2 = txt_from_obj(row_obj, "COLUMN2")
-                
-                # Match fields based on column contents
-                if col1 and col2:
-                    if "ID Bénéficiaire" in col1:
-                        parsed["id_beneficiaire"] = col2
-                    elif "Identité du malade" in col1:
-                        parsed["nom_malade"] = col2
-                    elif "Code du prescripteur" in col1:
-                        parsed["code_prescripteur"] = col2
-                    elif "Date de la prescription" in col1:
-                        parsed["date_prescription"] = col2
-                    elif "Date de dispensation" in col1:
-                        parsed["date_dispensation"] = col2
-                    elif "Régime" in col1:
-                        parsed["regime"] = col1.split(":")[1].strip() if ":" in col1 else col1
-                    elif "CNSS/CNRPS" in col1 or "CNSS/CNRPS" in col2:
-                        parsed["code_executeur"] = col2
-        
-        # Extract prescription items
-        prescription_items = f.get("prescription_items", {}).get("valueArray", [])
-        if prescription_items and len(prescription_items) > 1:  # Skip header row
-            # Get the first actual medication item (skip header)
-            for item in prescription_items[1:]:  # Start from second item
-                item_obj = item.get("valueObject", {})
-                # Check if this is a medication item (not header or total)
-                code_pct = txt_from_obj(item_obj, "Code PCT")
-                if code_pct and "Total" not in code_pct:
-                    parsed["code_pct"] = code_pct
-                    parsed["produit"] = txt_from_obj(item_obj, "Produit")
-                    parsed["forme"] = txt_from_obj(item_obj, "Forme")
-                    parsed["quantite"] = txt_from_obj(item_obj, "Qte")
-                    parsed["prix_unitaire"] = txt_from_obj(item_obj, "PUV")
-                    parsed["montant_percu"] = txt_from_obj(item_obj, "Mt. Percu")
-                    parsed["nio"] = txt_from_obj(item_obj, "N.I.O")
-                    parsed["pr_lot"] = txt_from_obj(item_obj, "PR/Lot")
-                    break  # Just get the first medication for now
-                
-            # Extract total amount
-            for item in prescription_items:
-                item_obj = item.get("valueObject", {})
-                code_pct = txt_from_obj(item_obj, "Code PCT")
-                if code_pct and "Total" in code_pct:
-                    total_parts = code_pct.split(":")
-                    if len(total_parts) > 1:
-                        try:
-                            total_val = total_parts[1].strip()
-                            parsed["montant_total"] = float(total_val.replace(',', '.'))
-                        except (ValueError, IndexError):
-                            pass
-        
-        # If medicaments field is present and product is empty, use that
-        if not parsed["produit"]:
-            parsed["produit"] = txt("medicaments")
-            
-        # Extract CNAM code if available
-        parsed["reference_cnam"] = txt("code_cnam") or txt("code_apci")
-        
-        return parsed
-        
-    finally:
-        # 7) Cleanup
-        tmp_path.unlink(missing_ok=True)
-
-
-# ─── MAIN ───────────────────────────────────────────────────────────────────
-def main():
-    ap = argparse.ArgumentParser("Header‑based dispatch OCR pipeline")
-    ap.add_argument("--scan",          required=True, type=Path,
-                    help="PDF/JPG/PNG of your form")
-    ap.add_argument("--presc_header",  default="assets/ordonnance_header1.png", type=Path,
-                    help="PNG of prescription header patch")
-    ap.add_argument("--bullet_header", default="assets/bulletin_de_soin_header1.png", type=Path,
-                    help="PNG of bulletin_de_soin header patch")
-    ap.add_argument("--poppler",       default=None,
-                    help="(Windows) path to poppler bin for PDF support")
-    ap.add_argument("--pages",         nargs="+", default=None,
-                    help="pages to send to the custom model")
-    ap.add_argument("--ocr_output",    default=Path("ocr_output.txt"), type=Path)
-    ap.add_argument("--model_bulletin",   default="bulletin_de_soin_v1",
-                    help="Your bulletin custom model ID")
-    ap.add_argument("--model_ordonnance", default="ordonnance_model_v2",
-                    help="Your prescription custom model ID")
-
-    args = ap.parse_args()
-
-    # load header templates
-    presc_hdr  = cv2.imread(str(args.presc_header))
-    bullet_hdr= cv2.imread(str(args.bullet_header))
-    if presc_hdr is None or bullet_hdr is None:
-        sys.exit("❌ Failed to load one of the header images")
-
-    # 1) classify
-    form_key = classify_form(args.scan, presc_hdr, bullet_hdr, poppler=args.poppler)
-
-    # 2) pick model
-    if form_key == "bulletin_de_soin":
-        model_id = args.model_bulletin
-    elif form_key == "prescription":
-        model_id = args.model_ordonnance
-    else:
-        logging.warning("Unknown form type → defaulting to bulletin")
-        model_id = args.model_bulletin
-        
-    # 3) decide which pages to send
-    if args.pages is not None:
-        pages_to_send = args.pages
-    else:
-        # render all pages so we know how many there are:
-        all_pages = load_all_pages(args.scan, poppler_path=args.poppler)
-        # build ["1","2",…] up to N:
-        pages_to_send = [str(i) for i in range(1, len(all_pages) + 1)]
-    logging.info("▷ sending pages %s to model %s", pages_to_send, model_id)
-
-    # 4) analyze
-    result = analyze_document(args.scan, model_id, pages=args.pages)
-
-    # 5) dump
-    dump_results(result, args.ocr_output)
-
-if __name__ == "__main__":
-    main()
