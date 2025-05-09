@@ -35,6 +35,8 @@ export class UploadDocComponent {
   uploadProgress = 0;
   isDragOver = false;
 
+  serverError: string | null = null;
+
   readonly MAX_FILES = 2;
   readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
@@ -100,6 +102,7 @@ export class UploadDocComponent {
   }
 
   removeFile(i: number) {
+    this.serverError = null;
     // revoke URL if image
     const p = this.uploadFiles[i].preview;
     if (p.startsWith('blob:')) URL.revokeObjectURL(p);
@@ -119,6 +122,7 @@ export class UploadDocComponent {
   }
   
   private addFile(f: File) {
+    this.serverError = null;
     // 1) avoid duplicates
     const existing = this.uploadFiles.find(u =>
       u.file.name === f.name && u.file.size === f.size
@@ -177,12 +181,18 @@ export class UploadDocComponent {
   uploadDocuments(): void {
     if (this.isSubmitDisabled) return;
     this.isUploading = true;
+    this.serverError = null;
   
     const calls = this.uploadFiles.map(u => {
       u.status = 'uploading';
       return this.documentsService.parseDocument(u.file).pipe(
-        tap(res => { u.progress = 100; u.status = 'success'; }),
-        catchError(_ => { u.status = 'error'; return of(null); })
+        tap(() => { u.progress = 100; u.status = 'success'; }),
+        catchError(err => {
+          u.status = 'error';
+          // if the server sent a 400 with a detail message, capture it
+          this.serverError = err?.error?.detail || 'Please upload a Bulletin de Soins or a prescription';
+          return of(null);
+        })
       );
     });
   
@@ -190,9 +200,12 @@ export class UploadDocComponent {
       .pipe(finalize(() => this.isUploading = false))
       .subscribe({
         next: (results: any[]) => {
-          // filter out any failed parses
           const files         = results.filter(r => !!r);
-          // **if we're embedded, hand them back to the parent and stop**
+
+          if (this.serverError) {
+            return;
+          }
+
           if (this.mode === 'embedded') {
             this.extracted.emit(files);
             return;

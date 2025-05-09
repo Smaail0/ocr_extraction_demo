@@ -47,6 +47,23 @@ class Bulletin(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    consultationsDentaires = Column("consultations_dentaires", JSON, nullable=False, default=list)
+    prothesesDentaires     = Column("protheses_dentaires",     JSON, nullable=False, default=list)
+    consultationsVisites   = Column("consultations_visites",   JSON, nullable=False, default=list)
+    actesMedicaux          = Column("actes_medicaux",          JSON, nullable=False, default=list)
+    actesParamed           = Column("actes_paramed",           JSON, nullable=False, default=list)
+    biologie               = Column("biologie",                JSON, nullable=False, default=list)
+    hospitalisation        = Column("hospitalisation",         JSON, nullable=False, default=list)
+    pharmacie              = Column("pharmacie",               JSON, nullable=False, default=list)
+
+    apci           = Column("apci",           Boolean, default=False)
+    mo             = Column("mo",             Boolean, default=False)
+    hosp           = Column("hosp",           Boolean, default=False)
+    grossesse      = Column("grossesse",      Boolean, default=False)
+
+    codeApci       = Column("codeApci",       String, nullable=True)
+    dateAccouchement = Column("dateAccouchement", String, nullable=True)
+
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     patient    = relationship("Patient", back_populates="bulletins")
 
