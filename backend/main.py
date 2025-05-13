@@ -1,6 +1,7 @@
 # main.py
 from datetime import datetime
 import os, re, shutil
+import traceback
 from typing import List
 from fastapi import Body
 import tempfile
@@ -19,6 +20,13 @@ from azure_model.pipeline import classify_form
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Medical Documents API")
+
+BASE = Path(__file__).resolve().parent.parent
+# ── Load header templates ──
+PRESC_HDR = cv2.imread(str(BASE / "assets" /"ordonnance_header1.png"))
+BULL_HDR = cv2.imread(str(BASE / "assets" /"bulletin_de_soin_header1.png"))
+if PRESC_HDR is None or BULL_HDR is None:
+    raise RuntimeError("Could not load header templates – check your paths!")
 
 # ── CORS ──
 app.add_middleware(
@@ -62,25 +70,18 @@ async def parse_document(file: UploadFile = File(...)):
     # LOCAL classification only
     form_key = classify_form(
         scan_path=tmp_path,
-        presc_hdr_img=cv2.imread("./assets/ordonnance_header1.png"),
-        bullet_hdr_img=cv2.imread("./assets/bulletin_de_soin_header1.png"),
-        min_matches=15,
-        margin=8
+        presc_hdr_img=PRESC_HDR,
+        bullet_hdr_img=BULL_HDR,
     )
     tmp_path.unlink()
-
-    if form_key == "unknown":
-        raise HTTPException(
-            status_code=400,
-            detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
-        )
 
     # now dispatch to Azure
     try:
         if form_key == "prescription":
             parsed = await parse_prescription_ocr(data, file.filename)
-        else:
+        else :
             parsed = await parse_bulletin_ocr(data, file.filename)
+
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
 
@@ -161,47 +162,187 @@ def create_prescription(
     db.refresh(db_presc)
     return db_presc
 
-# ── File‐upload endpoints unchanged ──
 UPLOAD_DIR = "bulletins"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.post("/bulletin/upload", response_model=schemas.UploadResponse)
+
 async def upload_bulletins(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
     uploaded = []
+
     for file in files:
         try:
-            ts = datetime.utcnow().isoformat()
-            safe = re.sub(r"[:.]", "-", ts)
-            name = f"{safe}_{file.filename}"
-            path = os.path.join(UPLOAD_DIR, name)
-            with open(path, "wb") as buf:
-                shutil.copyfileobj(file.file, buf)
-            dbf = models.FileUpload(
-                filename=name,
+            raw_timestamp = datetime.utcnow().isoformat()
+            safe_timestamp = re.sub(r"[:.]", "-", raw_timestamp)
+
+            filename = f"{safe_timestamp}_{file.filename}"
+            file_path = os.path.join(UPLOAD_DIR, filename)
+
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+                db_file = models.FileUpload(
+                    filename=filename,
+                    original_name=file.filename,
+                    path=file_path,
+                    type="bulletin",  # Confirm this is being set
+                    uploaded_at=datetime.utcnow()
+            )
+            db.add(db_file)
+            db.commit()
+            db.refresh(db_file)
+
+            uploaded.append({
+                "id": db_file.id, 
+                "filename": filename, 
+                "original_name": file.filename,
+                "type": "bulletin"
+            })
+
+        except Exception as e:
+            print(f"Error uploading {file.filename}: {e}")
+            traceback.print_exc()
+
+    return {
+        "message": f"{len(uploaded)} bulletin(s) uploaded successfully",
+        "uploaded_files": uploaded
+    }
+
+
+ORDONNANCE_UPLOAD_DIR = "ordonnances"
+os.makedirs(ORDONNANCE_UPLOAD_DIR, exist_ok=True)
+
+@app.post("/ordonnance/upload", response_model=schemas.UploadResponse)
+async def upload_ordonnances(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
+    uploaded = []
+
+    for file in files:
+        try:
+            raw_timestamp = datetime.utcnow().isoformat()
+            safe_timestamp = re.sub(r"[:.]", "-", raw_timestamp)
+
+            filename = f"{safe_timestamp}_{file.filename}"
+            file_path = os.path.join(ORDONNANCE_UPLOAD_DIR, filename)
+
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+            # Save file info to database
+            db_file = models.FileUpload(
+                filename=filename,
                 original_name=file.filename,
-                path=path,
+                path=file_path,
+                type="ordonnance",  
+                
                 uploaded_at=datetime.utcnow()
             )
-            db.add(dbf)
+            db.add(db_file)
             db.commit()
-            db.refresh(dbf)
-            uploaded.append({"id": dbf.id, "filename": name, "original_name": file.filename})
-        except:
-            continue
-    return {"message": f"{len(uploaded)} bulletin(s) uploaded", "uploaded_files": uploaded}
+            db.refresh(db_file)
+
+            uploaded.append({
+                "id": db_file.id, 
+                "filename": filename, 
+                "original_name": file.filename,
+                "type": "ordonnance"
+                
+            })
+
+        except Exception as e:
+            print(f"Error uploading {file.filename}: {e}")
+            traceback.print_exc()
+
+    
+    return {
+        "message": f"{len(uploaded)} ordonnance(s) uploaded successfully",
+        "uploaded_files": uploaded,
+    }
+
 
 @app.get("/bulletin/uploaded/latest")
 async def get_latest_bulletin(db: Session = Depends(get_db)):
-    latest = db.query(models.FileUpload).order_by(desc(models.FileUpload.uploaded_at)).first()
-    if not latest:
-        return {"exists": False, "message": "No bulletins uploaded"}
-    return {"id": latest.id, "filename": latest.filename,
-            "original_name": latest.original_name, "uploaded_at": latest.uploaded_at, "exists": True}
+    try:
+        latest_bulletin = (
+            db.query(models.FileUpload)
+            .filter(models.FileUpload.type == "bulletin")
+            .order_by(desc(models.FileUpload.uploaded_at))
+            .first()
+        )
+        
+        if latest_bulletin:
+            return {
+                "id": latest_bulletin.id,
+                "filename": latest_bulletin.filename,
+                "original_name": latest_bulletin.original_name,
+                "uploaded_at": latest_bulletin.uploaded_at,
+                "exists": True,
+                "type": latest_bulletin.type
+            }
+        else:
+            return {"exists": False, "message": "No bulletin found."}
+    
+    except Exception as e:
+        print("Error in get_latest_bulletin:", e)
+        traceback.print_exc()
+        return {"exists": False, "message": "An error occurred."}
+    
+@app.get("/ordonnance/uploaded/latest")
+async def get_latest_bulletin(db: Session = Depends(get_db)):
+    try:
+        latest_bulletin = (
+            db.query(models.FileUpload)
+            .filter(models.FileUpload.type == "ordonnance")
+            .order_by(desc(models.FileUpload.uploaded_at))
+            .first()
+        )
+        
+        if latest_bulletin:
+            return {
+                "id": latest_bulletin.id,
+                "filename": latest_bulletin.filename,
+                "original_name": latest_bulletin.original_name,
+                "uploaded_at": latest_bulletin.uploaded_at,
+                "exists": True,
+                "type": latest_bulletin.type
+            }
+        else:
+            return {"exists": False, "message": "No bulletin found."}
+    
+    except Exception as e:
+        print("Error in get_latest_bulletin:", e)
+        traceback.print_exc()
+        return {"exists": False, "message": "An error occurred."}
 
 @app.get("/bulletin/uploaded/all")
 async def get_all_bulletins(db: Session = Depends(get_db)):
     files = db.query(models.FileUpload).order_by(desc(models.FileUpload.uploaded_at)).all()
-    return [{"id": f.id, "filename": f.filename, "original_name": f.original_name, "uploaded_at": f.uploaded_at} for f in files]
+    bulletins = [
+        {
+            "id": f.id,
+            "filename": f.filename,
+            "original_name": f.original_name,
+            "uploaded_at": f.uploaded_at,
+            "type": f.type
+        }
+        for f in files if f.type == "bulletin"
+    ]
+    return bulletins
+
+@app.get("/ordonnance/uploaded/all")
+async def get_all_bulletins(db: Session = Depends(get_db)):
+    files = db.query(models.FileUpload).order_by(desc(models.FileUpload.uploaded_at)).all()
+    ordonnances = [
+        {
+            "id": f.id,
+            "filename": f.filename,
+            "original_name": f.original_name,
+            "uploaded_at": f.uploaded_at,
+            "type": f.type
+        }
+        for f in files if f.type == "ordonnance"
+    ]
+    return ordonnances
+
 
 @app.put("/bulletin/{bulletin_id}", response_model=schemas.Bulletin)
 def update_bulletin(
@@ -226,8 +367,8 @@ def health_check():
     return {"status": "healthy"}
 
 
-@app.on_event("startup")
-def reset_database_on_startup():
+#@app.on_event("startup")
+#def reset_database_on_startup():
     models.Base.metadata.drop_all(bind=engine)
     models.Base.metadata.create_all(bind=engine)
 

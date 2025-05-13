@@ -8,6 +8,9 @@ import { catchError, tap, map, filter } from 'rxjs/operators'; // Adjust the imp
   providedIn: 'root'
 })
 export class DocumentsService {
+  deleteBulletin(documentId: number) {
+    throw new Error('Method not implemented.');
+  }
   private apiUrl = 'http://localhost:8000';
 
   constructor(private http: HttpClient) {}
@@ -178,16 +181,6 @@ export class DocumentsService {
       );
   }
   
-  getAllOrdonnances(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.apiUrl}/ordonnance/`).pipe(
-      catchError(error => {
-        if (error.status === 404) {
-          return of([]);
-        }
-        return throwError(() => error); 
-      })
-    );
-  }
 
   deleteOrdonnance(id: number): Observable<any> {
     return this.http.delete(`${this.apiUrl}/ordonnance/${id}`).pipe(

@@ -178,78 +178,174 @@ export class UploadDocComponent {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
   }
 
-  uploadDocuments(): void {
-    if (this.isSubmitDisabled) return;
-    this.isUploading = true;
-    this.serverError = null;
+uploadDocuments(): void {
+  if (this.isSubmitDisabled) return;
+  this.isUploading = true;
+  this.serverError = null;
+
+
+  const calls = this.uploadFiles.map(u => {
+    u.status = 'uploading';
+    return this.documentsService.parseDocument(u.file).pipe(
+      tap(() => { u.progress = 50; }),  // Set to 50% after OCR processing
+      catchError(err => {
+        u.status = 'error';
+        this.serverError = err?.error?.detail || 'Please upload a Bulletin de Soins or a prescription';
+        return of(null);
+      })
+    );
+  });
   
-    const calls = this.uploadFiles.map(u => {
-      u.status = 'uploading';
-      return this.documentsService.parseDocument(u.file).pipe(
-        tap(() => { u.progress = 100; u.status = 'success'; }),
-        catchError(err => {
-          u.status = 'error';
-          // if the server sent a 400 with a detail message, capture it
-          this.serverError = err?.error?.detail || 'Please upload a Bulletin de Soins or a prescription';
-          return of(null);
-        })
-      );
+  // Process all OCR calls first to determine document types
+  forkJoin(calls)
+    .pipe(finalize(() => !this.serverError && (this.isUploading = false)))
+    .subscribe({
+      next: (results: any[]) => {
+        if (this.serverError) {
+          this.isUploading = false;
+          return;
+        }
+        
+        const validResults = results.filter(r => !!r);
+        
+        // Separate files by type
+        const prescriptionFiles: {file: File, result: any}[] = [];
+        const bulletinFiles: {file: File, result: any}[] = [];
+        
+        // Match OCR results with the original files and categorize them
+        validResults.forEach((result, index) => {
+          if (result && result.header && result.header.documentType) {
+            const fileObj = this.uploadFiles[index];
+            if (result.header.documentType === 'prescription') {
+              prescriptionFiles.push({file: fileObj.file, result});
+            } else if (result.header.documentType === 'bulletin_de_soin') {
+              bulletinFiles.push({file: fileObj.file, result});
+            }
+          }
+        });
+        
+        // Upload files to their appropriate directories
+        const uploadTasks: Observable<any>[] = [];
+        
+        if (bulletinFiles.length > 0) {
+          const bulletinUpload = this.documentsService.uploadBulletins(
+            bulletinFiles.map(item => item.file)
+          ).pipe(
+            tap(() => {
+              bulletinFiles.forEach(item => {
+                const fileObj = this.uploadFiles.find(u => u.file === item.file);
+                if (fileObj) {
+                  fileObj.progress = 100;
+                  fileObj.status = 'success';
+                }
+              });
+            }),
+            catchError(err => {
+              this.serverError = 'Failed to upload bulletin files';
+              console.error('Bulletin upload error:', err);
+              return of(null);
+            })
+          );
+          uploadTasks.push(bulletinUpload);
+        }
+        
+        if (prescriptionFiles.length > 0) {
+          const prescriptionUpload = this.documentsService.uploadOrdonnances(
+            prescriptionFiles.map(item => item.file)
+          ).pipe(
+            tap(() => {
+              prescriptionFiles.forEach(item => {
+                const fileObj = this.uploadFiles.find(u => u.file === item.file);
+                if (fileObj) {
+                  fileObj.progress = 100;
+                  fileObj.status = 'success';
+                }
+              });
+            }),
+            catchError(err => {
+              this.serverError = 'Failed to upload prescription files';
+              console.error('Prescription upload error:', err);
+              return of(null);
+            })
+          );
+          uploadTasks.push(prescriptionUpload);
+        }
+        
+        // If there are files to upload, process the uploads
+        if (uploadTasks.length > 0) {
+          forkJoin(uploadTasks).subscribe({
+            next: (_) => {
+              if (this.serverError) {
+                return;
+              }
+              
+              // All files processed and uploaded successfully
+              this.processNavigation(validResults);
+            },
+            error: (err) => {
+              this.serverError = 'Failed to complete file uploads';
+              console.error('Upload error:', err);
+            },
+            complete: () => {
+              this.isUploading = false;
+            }
+          });
+        } else {
+          this.isUploading = false;
+          if (validResults.length > 0) {
+            this.processNavigation(validResults);
+          }
+        }
+      },
+      error: (err) => {
+        this.serverError = 'Failed to process documents';
+        console.error('OCR error:', err);
+        this.isUploading = false;
+      }
     });
-  
-    forkJoin(calls)
-      .pipe(finalize(() => this.isUploading = false))
-      .subscribe({
-        next: (results: any[]) => {
-          const files         = results.filter(r => !!r);
+}
 
-          if (this.serverError) {
-            return;
-          }
-
-          if (this.mode === 'embedded') {
-            this.extracted.emit(files);
-            return;
-          }
-  
-          const prescriptions = files.filter(f => f.header.documentType === 'prescription');
-          const bulletins     = files.filter(f => f.header.documentType === 'bulletin_de_soin');
-          const idxOf         = (arr: any[], x: any) => arr.indexOf(x);
-  
-          // only prescriptions → land on the first prescription tab
-          if (prescriptions.length && !bulletins.length) {
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
-            );
-            return;
-          }
-  
-          // only bulletins → land on the first bulletin tab
-          if (bulletins.length && !prescriptions.length) {
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
-            );
-            return;
-          }
-  
-          // mixed → default to the first prescription
-          if (prescriptions.length) {
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
-            );
-          } else {
-            // fallback: no prescriptions? show first bulletin
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
-            );
-          }
-        },
-        error: _ => alert('Extraction error')
-      });
+// Helper method to handle navigation based on processed files
+private processNavigation(files: any[]): void {
+  if (this.mode === 'embedded') {
+    this.extracted.emit(files);
+    return;
   }
+
+  const prescriptions = files.filter(f => f.header.documentType === 'prescription');
+  const bulletins = files.filter(f => f.header.documentType === 'bulletin_de_soin');
+  const idxOf = (arr: any[], x: any) => arr.indexOf(x);
+
+  // Navigation logic remains the same
+  if (prescriptions.length && !bulletins.length) {
+    this.router.navigate(
+      ['/extracted'],
+      { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
+    );
+    return;
+  }
+
+  if (bulletins.length && !prescriptions.length) {
+    this.router.navigate(
+      ['/extracted'],
+      { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
+    );
+    return;
+  }
+
+  if (prescriptions.length) {
+    this.router.navigate(
+      ['/extracted'],
+      { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
+    );
+  } else {
+    this.router.navigate(
+      ['/extracted'],
+      { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
+    );
+  }
+}
+
   
   getFileIcon(file: File): string {
     if (file.type.includes('pdf')) return 'pdf-icon';

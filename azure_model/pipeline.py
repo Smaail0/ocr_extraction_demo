@@ -104,40 +104,32 @@ def classify_form(
     scan_path: Path,
     presc_hdr_img: np.ndarray,
     bullet_hdr_img: np.ndarray,
-    poppler: str | None = None,
-    min_matches: int = 15,
-    margin: int      = 8
+    poppler: str | None = None
 ) -> str:
     """
-    ORB‐based classification with absolute & relative thresholds.
-    Returns 'prescription', 'bulletin_de_soin', or 'unknown'.
+    Renders all pages and returns 'prescription' or 'bulletin_de_soin'
+    based on which header patch matches best.
     """
-    # 1) prepare templates
+    # precompute descriptors for the two header templates
     p_gray = cv2.cvtColor(presc_hdr_img, cv2.COLOR_BGR2GRAY)
     b_gray = cv2.cvtColor(bullet_hdr_img, cv2.COLOR_BGR2GRAY)
     _, des_p = detect_and_compute(p_gray)
     _, des_b = detect_and_compute(b_gray)
 
-    # 2) scan only first page (headers live on page 1)
-    page = load_all_pages(scan_path, poppler_path=poppler)[0]
-    gray = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
-    _, des_s = detect_and_compute(gray)
+    best = ("unknown", -1)
+    pages = load_all_pages(scan_path, poppler_path=poppler)
+    for page in pages:
+        g = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
+        _, des_s = detect_and_compute(g)
+        mp = count_good_matches(des_p, des_s)
+        mb = count_good_matches(des_b, des_s)
+        if mp > best[1]:
+            best = ("prescription", mp)
+        if mb > best[1]:
+            best = ("bulletin_de_soin", mb)
 
-    # 3) count matches
-    mp = count_good_matches(des_p, des_s)
-    mb = count_good_matches(des_b, des_s)
-
-    # 4) absolute floor
-    best = max(mp, mb)
-    if best < min_matches:
-        return "unknown"
-
-    # 5) relative separation
-    if abs(mp - mb) < margin:
-        return "unknown"
-
-    # 6) final
-    return "prescription" if mp > mb else "bulletin_de_soin"
+    logging.info("▷ classified as %r (best score=%d)", best[0], best[1])
+    return best[0]
 
 def format_prescription_id(raw: str) -> str:
     # 1) strip everything but digits
@@ -169,7 +161,6 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
             presc_hdr_img=cv2.imread("assets/ordonnance_header1.png"),
             bullet_hdr_img=cv2.imread("assets/bulletin_de_soin_header1.png"),
             poppler=None,
-            min_matches=10
 )
         if form_key != "bulletin_de_soin":
             raise ValueError(f"Expected bulletin_de_soin, got {form_key!r}")
@@ -180,11 +171,6 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
         doc      = result.documents[0]
         f        = doc.fields
         tables   = result.tables   # ← your 8 Azure tables
-
-        # ── 4) guard: ensure we actually got 8 tables ──────────────────
-        if len(tables) < 8:
-            raise ValueError(f"Expected 8 tables in bulletin but got {len(tables)}; "
-                             "this doesn’t look like a Bulletin de soin.")
 
         # ── 5) helpers ──────────────────────────────────────────────────
         def txt(k: str) -> Optional[str]:
@@ -212,6 +198,8 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
 
         # ── 6) extract & map all eight grids ───────────────────────────
         grids = [extract_grid(tbl) for tbl in tables]
+        while len(grids) < 8:
+            grids.append([])
 
         consultations_dentaires = table_to_objects(grids[0], [
             "date","dent","codeActe","cotation","honoraires","codePs","signature"

@@ -106,3 +106,4 @@ class FileUpload(Base):
     original_name = Column(String,  nullable=False)
     path          = Column(String,  nullable=False)
     uploaded_at   = Column(DateTime, default=datetime.utcnow)
+    type          = Column(String)
