@@ -78,7 +78,7 @@ class Prescription(Base):
     pharmacyFiscalId   = Column(String,  nullable=True)
 
     beneficiaryId      = Column(String,  nullable=False)
-    patientIdentity    = Column(String,  nullable=False)
+    patientIdentity    = Column(String,  nullable=True)
     prescriberCode     = Column(String,  nullable=True)
     prescriptionDate   = Column(String,  nullable=True)
     regimen            = Column(String,  nullable=True)

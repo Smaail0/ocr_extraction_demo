@@ -301,6 +301,16 @@
           </div>
         </div>
 
+        <!-- Signature -->
+        <div *ngIf="signatureUrl" class="signature-container">
+          <label>Signature du médecin :</label>
+          <img
+            [src]="signatureUrl"
+            alt="Signature du médecin"
+            class="img-fluid"
+          />
+        </div>
+        
         <!-- Footer Stamp -->
         <div class="row mb-5">
           <div class="col-md-4 pharmacy-stamp">
@@ -315,30 +325,30 @@
             </p>
             <p>
               <input
-              type="text"
-              class="form-control"
-              [(ngModel)]="prescription.pharmacyAddress"
-              [readonly]="!isEditMode"
-              placeholder="Adresse de Pharmacie"
-            />
+                type="text"
+                class="form-control"
+                [(ngModel)]="prescription.pharmacyAddress"
+                [readonly]="!isEditMode"
+                placeholder="Adresse de Pharmacie"
+              />
             </p>
             <p>
               <input
-              type="text"
-              class="form-control"
-              [(ngModel)]="prescription.pharmacyContact"
-              [readonly]="!isEditMode"
-              placeholder="Tél/Fax"
-            />
+                type="text"
+                class="form-control"
+                [(ngModel)]="prescription.pharmacyContact"
+                [readonly]="!isEditMode"
+                placeholder="Tél/Fax"
+              />
             </p>
             <p>
               <input
-              type="text"
-              class="form-control"
-              [(ngModel)]="prescription.pharmacyFiscalId"
-              [readonly]="!isEditMode"
-              placeholder="Matricule Fiscale"
-            />
+                type="text"
+                class="form-control"
+                [(ngModel)]="prescription.pharmacyFiscalId"
+                [readonly]="!isEditMode"
+                placeholder="Matricule Fiscale"
+              />
             </p>
           </div>
         </div>

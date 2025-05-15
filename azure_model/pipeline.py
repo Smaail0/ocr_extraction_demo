@@ -12,12 +12,17 @@ from dotenv import load_dotenv
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from typing import Optional, List, Dict
-
+from .signature_pipeline import get_doctor_name, get_signature_crop
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 load_dotenv()
 
 ENDPOINT = os.getenv("DOCUMENT_INTELLIGENCE_ENDPOINT")
 KEY      = os.getenv("DOCUMENT_INTELLIGENCE_API_KEY")
+SIGNATURE_MODEL_ID = os.getenv("SIGNATURE_MODEL_ID")
+sig_client = None
+if SIGNATURE_MODEL_ID:
+    sig_client = DocumentIntelligenceClient(ENDPOINT, AzureKeyCredential(KEY))
+    
 if not (ENDPOINT and KEY):
     raise SystemExit("❌  Set DOCUMENT_INTELLIGENCE_ENDPOINT & DOCUMENT_INTELLIGENCE_API_KEY in .env")
 
@@ -99,18 +104,13 @@ def count_good_matches(desT, desS, ratio=0.75):
     matches = bf.knnMatch(desT, desS, k=2)
     return sum(1 for m,n in matches if m.distance < ratio * n.distance)
 
-
 def classify_form(
     scan_path: Path,
     presc_hdr_img: np.ndarray,
     bullet_hdr_img: np.ndarray,
     poppler: str | None = None
 ) -> str:
-    """
-    Renders all pages and returns 'prescription' or 'bulletin_de_soin'
-    based on which header patch matches best.
-    """
-    # precompute descriptors for the two header templates
+    
     p_gray = cv2.cvtColor(presc_hdr_img, cv2.COLOR_BGR2GRAY)
     b_gray = cv2.cvtColor(bullet_hdr_img, cv2.COLOR_BGR2GRAY)
     _, des_p = detect_and_compute(p_gray)
@@ -149,30 +149,24 @@ def format_prescription_id(raw: str) -> str:
 def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
     tmp_path: Optional[Path] = None
     try:
-        # ── 1) dump bytes to a temp file ────────────────────────────────
+        # 1) dump bytes to disk
         suffix = Path(filename).suffix or ".pdf"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(file_bytes)
             tmp_path = Path(tmp.name)
 
-        # ── 2) classify & early‐exit if not bulletin ───────────────────
-        form_key = classify_form(
-            scan_path=tmp_path,
-            presc_hdr_img=cv2.imread("assets/ordonnance_header1.png"),
-            bullet_hdr_img=cv2.imread("assets/bulletin_de_soin_header1.png"),
-            poppler=None,
-)
-        if form_key != "bulletin_de_soin":
-            raise ValueError(f"Expected bulletin_de_soin, got {form_key!r}")
-
-        # ── 3) call Azure Document Intelligence ────────────────────────
+        # 2) call Azure
         model_id = os.getenv("BULLETIN_MODEL_ID")
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
-        tables   = result.tables   # ← your 8 Azure tables
+        tables   = result.tables
 
-        # ── 5) helpers ──────────────────────────────────────────────────
+        # 3) guard: must have at least one table (or ≥8 if you require full grids)
+        if len(tables) == 0:
+            raise ValueError("OCR returned no tables; this doesn’t look like a Bulletin de soin.")
+
+        # 4) helpers
         def txt(k: str) -> Optional[str]:
             fld = f.get(k)
             return fld and (fld.get("valueString") or fld.get("content"))
@@ -190,41 +184,24 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
         def table_to_objects(grid: List[List[str]], cols: List[str]) -> List[Dict[str,str]]:
             out: List[Dict[str,str]] = []
             for row in grid[1:]:
-                obj: Dict[str,str] = {}
-                for idx, key in enumerate(cols):
-                    obj[key] = row[idx] if idx < len(row) else ""
+                obj = { cols[i]: row[i] if i < len(row) else "" for i in range(len(cols)) }
                 out.append(obj)
             return out
 
-        # ── 6) extract & map all eight grids ───────────────────────────
+        # 5) extract & pad grids
         grids = [extract_grid(tbl) for tbl in tables]
         while len(grids) < 8:
-            grids.append([])
+            grids.append([[]])   # or `[[""] * len(cols)]` if you prefer
 
-        consultations_dentaires = table_to_objects(grids[0], [
-            "date","dent","codeActe","cotation","honoraires","codePs","signature"
-        ])
-        protheses_dentaires     = table_to_objects(grids[1], [
-            "date","dents","codeActe","cotation","honoraires","codePs","signature"
-        ])
-        consultations_visites   = table_to_objects(grids[2], [
-            "date","designation","honoraires","codePs","signature"
-        ])
-        actes_medicaux          = table_to_objects(grids[3], [
-            "date","designation","honoraires","codePs","signature"
-        ])
-        actes_paramed           = table_to_objects(grids[4], [
-            "date","designation","honoraires","codePs","signature"
-        ])
-        biologie                = table_to_objects(grids[5], [
-            "date","montant","codePs","signature"
-        ])
-        hospitalisation         = table_to_objects(grids[6], [
-            "date","codeHosp","forfait","codeClinique","signature"
-        ])
-        pharmacie               = table_to_objects(grids[7], [
-            "date","montant","codePs","signature"
-        ])
+        # 6) map each of the 8 tables
+        consultations_dentaires = table_to_objects(grids[0], ["date","dent","codeActe","cotation","honoraires","codePs","signature"])
+        protheses_dentaires     = table_to_objects(grids[1], ["date","dents","codeActe","cotation","honoraires","codePs","signature"])
+        consultations_visites   = table_to_objects(grids[2], ["date","designation","honoraires","codePs","signature"])
+        actes_medicaux          = table_to_objects(grids[3], ["date","designation","honoraires","codePs","signature"])
+        actes_paramed           = table_to_objects(grids[4], ["date","designation","honoraires","codePs","signature"])
+        biologie                = table_to_objects(grids[5], ["date","montant","codePs","signature"])
+        hospitalisation         = table_to_objects(grids[6], ["date","codeHosp","forfait","codeClinique","signature"])
+        pharmacie               = table_to_objects(grids[7], ["date","montant","codePs","signature"])
 
         # ── 7) other fields & checks ───────────────────────────────────
         dossier_id   = txt("id_dossier") or ""
@@ -255,7 +232,7 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
         # ── 8) assemble final dict ─────────────────────────────────────
         return {
             "header": {
-                "documentType": form_key,
+                "documentType": "bulletin_de_soin",
                 "dossierId":    dossier_id
             },
 
@@ -329,7 +306,6 @@ def analyze_document(scan_path: Path, model_id: str, pages: list[str] | None):
     return poller.result()
 
 def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
-    
     tmp_path: Optional[Path] = None
     try:
         # ─── 1) dump bytes to temp file ────────────────────────────────
@@ -343,12 +319,11 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
-        
-        # ─── GUARD: make sure we got at least one table back ─────────────
+
+        # ─── GUARD: ensure at least one table back ─────────────────────
         raw_tables = result.tables
-        if len(raw_tables) < 0:
-            raise ValueError(f"Expected 8 tables but only found {len(tables)}; this doesn't look like a Bulletin de soin.")
-        
+        if len(raw_tables) < 1:
+            raise ValueError(f"Expected at least 1 table but found {len(raw_tables)}; not a valid prescription.")
 
         logging.info("Processing document fields: %s", list(f.keys()))
         logging.info("Tables found by column count: %s",
@@ -363,14 +338,12 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
 
         # ─── 3) rebuild all tables into (col_count, matrix) ────────────
         tables: list[tuple[int, list[list[str]]]] = []
-           
         for tbl in result.tables:
             mat = [[""] * tbl.column_count for _ in range(tbl.row_count)]
             for cell in tbl.cells:
                 mat[cell.row_index][cell.column_index] = cell.content.strip()
             tables.append((tbl.column_count, mat))
 
-        # pick out the 8-col items table and the 2-col metadata table
         items_mat = next((m for c, m in tables if c >= 8), None)
         meta_mat  = next((m for c, m in tables if c == 2), None)
 
@@ -378,7 +351,6 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         items: list[dict] = []
         total: Optional[str] = None
         if items_mat and len(items_mat) > 1:
-            # actual item rows are 1..n-2
             for row in items_mat[1:-1]:
                 cells = (row + [""] * 8)[:8]
                 items.append({
@@ -391,7 +363,6 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
                     "nio":          cells[6],
                     "prLot":        cells[7],
                 })
-            # footer row could hold “Total …”
             footer = items_mat[-1]
             if footer and footer[0].lower().startswith("total"):
                 total = footer[0]
@@ -405,7 +376,6 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
                 key = key_cell.strip().lower()
                 val = val_cell.strip()
 
-                # if value is blank but the key text has the date, extract inline
                 if not val and "date de la prescription" in key:
                     m = re.search(r"(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})", key_cell)
                     prescriptionDate = m.group(1) if m else None
@@ -415,7 +385,6 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
                     dispensationDate = m.group(1) if m else None
                     continue
 
-                # otherwise match on normalized key
                 if "bénéficiaire" in key:
                     beneficiaryId = val
                 elif "identité" in key and "malade" in key:
@@ -430,22 +399,22 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
                     dispensationDate = val or dispensationDate
 
         # ─── 6) SAFE FALLBACKS for missing metadata ────────────────────
-        beneficiaryId    = beneficiaryId   or txt("id_unique")
-        formatted_id = format_prescription_id(beneficiaryId)
-        patientIdentity  = patientIdentity or txt("nom_prenom")
+        beneficiaryId    = beneficiaryId   or txt("id_unique") or ""
+        formatted_id     = format_prescription_id(beneficiaryId)
+        patientIdentity  = patientIdentity or txt("nom_prenom") or ""
         prescriberCode   = prescriberCode  or txt("code_apci")
         prescriptionDate = prescriptionDate or txt("date")
         dispensationDate = dispensationDate or txt("date_numero")
         regimen          = regimen          or txt("regime")
 
-        # ─── 7) fallback items from the `prescription_items` array ─────
+        # ─── 7) fallback items from `prescription_items` array ────────
         if not items and f.get("prescription_items"):
             arr = f["prescription_items"].get("valueArray", [])
             for idx, row in enumerate(arr):
                 cells = [(c.get("valueString") or c.get("content") or "").strip()
                          for c in row.get("valueArray", [])]
                 if idx == 0:
-                    continue  # skip header
+                    continue
                 if cells and cells[0].lower().startswith("total"):
                     total = cells[0]
                     continue
@@ -458,15 +427,14 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
                 })
 
         # ─── 8) fallback total from the raw field ──────────────────────
-        total = total or txt("total_ttc")
+        total = total or txt("total_ttc") or ""
 
         # ─── 9) split the `pharmacie` blob ────────────────────────────
-        raw_pharm = txt("pharmacie") or ""
+        raw_pharm    = txt("pharmacie") or ""
         parts        = re.split(r"Tél[:]? *", raw_pharm, maxsplit=1)
         main_part    = parts[0].strip()
         contact_part = parts[1] if len(parts) > 1 else ""
 
-        # address detection
         addr_pat = re.compile(r"\b(RTE|Route|Rue|Av|Avenue)\b", re.IGNORECASE)
         m = addr_pat.search(main_part)
         if m:
@@ -478,16 +446,14 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             pharmacyName    = main_part
             pharmacyAddress = None
 
-        # Tel / Fax
         tel_m = re.search(r"^([\d\s]+)", contact_part)
         fax_m = re.search(r"Fax[:]? *([\d\s]+)", contact_part, re.IGNORECASE)
-        pharmacyContact   = " / ".join(filter(None, [
+        pharmacyContact = " / ".join(filter(None, [
             tel_m and tel_m.group(1).strip(),
             fax_m and fax_m.group(1).strip(),
         ])) or None
 
-        # fiscal ID
-        fisc_m = re.search(r"Matricule\s+Fisc[^\w]*(\w+)", contact_part, re.IGNORECASE)
+        fisc_m          = re.search(r"Matricule\s+Fisc[^\w]*(\w+)", contact_part, re.IGNORECASE)
         pharmacyFiscalId = fisc_m.group(1).strip() if fisc_m else None
 
         # ─── 10) executor & CNAM ref ───────────────────────────────────
@@ -495,23 +461,45 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         pharmacistCnamRef = txt("code_cnam")
 
         # ─── 11) build final dict ──────────────────────────────────────
-        return {
+        output = {
             "header":            {"documentType": "prescription"},
             "pharmacyName":      pharmacyName,
             "pharmacyAddress":   pharmacyAddress,
             "pharmacyContact":   pharmacyContact,
             "pharmacyFiscalId":  pharmacyFiscalId,
+
             "beneficiaryId":     formatted_id,
             "patientIdentity":   patientIdentity,
+
             "prescriberCode":    prescriberCode,
             "prescriptionDate":  prescriptionDate,
             "regimen":           regimen,
             "dispensationDate":  dispensationDate,
             "executor":          executor,
             "pharmacistCnamRef": pharmacistCnamRef,
+
             "items":             items,
             "total":             total,
         }
+
+        # ─── 12) signature crop & naming ────────────────────────────────
+        if sig_client:
+            # sanitize the doctor's name
+            doc_name = get_doctor_name(tmp_path, sig_client, SIGNATURE_MODEL_ID)
+            # crop the signature
+            sig_crop = get_signature_crop(tmp_path)
+
+            sig_dir = Path("signatures")
+            sig_dir.mkdir(exist_ok=True)
+            crop_path = sig_dir / f"{doc_name}_signature.png"
+            cv2.imwrite(str(crop_path), sig_crop)
+
+            output["signatureCropFile"] = str(crop_path)
+        else:
+            output["signatureCropFile"] = None
+
+        # ─── 13) return everything ──────────────────────────────────────
+        return output
 
     finally:
         if tmp_path and tmp_path.exists():

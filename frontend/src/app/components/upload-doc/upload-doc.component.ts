@@ -50,7 +50,7 @@ export class UploadDocComponent {
   }
 
   get isSubmitDisabled(): boolean {
-    return this.uploadFiles.length === 0 || this.isUploading;
+    return this.uploadFiles.length !== this.MAX_FILES || this.isUploading;
   }
 
   ngOnInit() {
@@ -178,78 +178,98 @@ export class UploadDocComponent {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
   }
 
-  uploadDocuments(): void {
-    if (this.isSubmitDisabled) return;
-    this.isUploading = true;
-    this.serverError = null;
-  
-    const calls = this.uploadFiles.map(u => {
-      u.status = 'uploading';
-      return this.documentsService.parseDocument(u.file).pipe(
-        tap(() => { u.progress = 100; u.status = 'success'; }),
-        catchError(err => {
-          u.status = 'error';
-          // if the server sent a 400 with a detail message, capture it
-          this.serverError = err?.error?.detail || 'Please upload a Bulletin de Soins or a prescription';
-          return of(null);
-        })
-      );
-    });
-  
-    forkJoin(calls)
-      .pipe(finalize(() => this.isUploading = false))
-      .subscribe({
-        next: (results: any[]) => {
-          const files         = results.filter(r => !!r);
+uploadDocuments(): void {
+  if (this.isSubmitDisabled) return;
+  this.isUploading = true;
+  this.serverError = null;
 
-          if (this.serverError) {
-            return;
-          }
+  // 1) First, parse all files
+  const parseCalls = this.uploadFiles.map(u => {
+    u.status = 'uploading';
+    return this.documentsService.parseDocument(u.file).pipe(
+      tap(() => { u.progress = 100; u.status = 'success'; }),
+      catchError(err => {
+        u.status = 'error';
+        this.serverError = err?.error?.detail 
+          || 'Please upload a Bulletin de soins or a prescription';
+        return of(null);
+      })
+    );
+  });
 
-          if (this.mode === 'embedded') {
-            this.extracted.emit(files);
-            return;
-          }
-  
-          const prescriptions = files.filter(f => f.header.documentType === 'prescription');
-          const bulletins     = files.filter(f => f.header.documentType === 'bulletin_de_soin');
-          const idxOf         = (arr: any[], x: any) => arr.indexOf(x);
-  
-          // only prescriptions → land on the first prescription tab
-          if (prescriptions.length && !bulletins.length) {
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
-            );
-            return;
-          }
-  
-          // only bulletins → land on the first bulletin tab
-          if (bulletins.length && !prescriptions.length) {
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
-            );
-            return;
-          }
-  
-          // mixed → default to the first prescription
-          if (prescriptions.length) {
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
-            );
+  forkJoin(parseCalls)
+    .pipe(finalize(() => this.isUploading = false))
+    .subscribe({
+      next: parsedResults => {
+        if (this.serverError) {
+          // one of them already failed classification → bail out
+          return;
+        }
+
+        // keep only the successful parses
+        const files = parsedResults.filter(r => !!r);
+
+        // 2) Build save‐to‐DB calls
+        const saveCalls: Observable<any>[] = files.map(f => {
+          if (f.header.documentType === 'prescription') {
+            // inject the missing fields
+            const payload = {
+              ...f,
+              totalInWords: f.totalInWords ?? '',
+              // if patientIdentity OCR failed, use beneficiaryId as fallback
+              patientIdentity: f.patientIdentity ?? f.beneficiaryId ?? ''
+            };
+            return this.documentsService.savePrescription(payload);
           } else {
-            // fallback: no prescriptions? show first bulletin
-            this.router.navigate(
-              ['/extracted'],
-              { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
-            );
+            return this.documentsService.saveBulletinData(f);
           }
-        },
-        error: _ => alert('Extraction error')
-      });
-  }
+        });
+
+        // 3) fire all the save calls in parallel
+        forkJoin(saveCalls).subscribe({
+          next: savedResponses => {
+            // 4) once they're all saved, navigate exactly as before
+            const prescriptions = files.filter(f => f.header.documentType === 'prescription');
+            const bulletins     = files.filter(f => f.header.documentType === 'bulletin_de_soin');
+            const idxOf         = (arr: any[], x: any) => arr.indexOf(x);
+
+            if (this.mode === 'embedded') {
+              this.extracted.emit(files);
+              return;
+            }
+
+            // same tab‐selection logic...
+            if (prescriptions.length && !bulletins.length) {
+              this.router.navigate(
+                ['/extracted'],
+                { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
+              );
+            } else if (bulletins.length && !prescriptions.length) {
+              this.router.navigate(
+                ['/extracted'],
+                { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
+              );
+            } else if (prescriptions.length) {
+              this.router.navigate(
+                ['/extracted'],
+                { state: { files, selectedIndex: idxOf(files, prescriptions[0]) } }
+              );
+            } else {
+              this.router.navigate(
+                ['/extracted'],
+                { state: { files, selectedIndex: idxOf(files, bulletins[0]) } }
+              );
+            }
+          },
+          error: saveErr => {
+            console.error('Error saving documents:', saveErr);
+            alert('Failed to save documents to the server.');
+          }
+        });
+      },
+      error: _ => alert('Extraction error')
+    });
+}
   
   getFileIcon(file: File): string {
     if (file.type.includes('pdf')) return 'pdf-icon';

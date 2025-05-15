@@ -9,6 +9,7 @@ import { UploadComponent } from '../upload/upload.component'; // Adjust the path
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.css']
 })
+
 export class DashboardComponent {
   showUploadModal = false;
   

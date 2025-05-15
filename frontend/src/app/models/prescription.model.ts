@@ -51,7 +51,7 @@ export interface Prescription {
   mtPercu?: string;
   mtRes?: string;
 
-
+  signatureCropFile?: string | null;
 }
 
 // This is what you send to the POST /prescription endpoint
@@ -70,5 +70,5 @@ export interface PrescriptionCreate {
   pharmacistCnamRef?: string;
   items: PrescriptionItem[];
   total?: string;
-  totalInWords?: string;
+  totalInWords?: string; 
 }

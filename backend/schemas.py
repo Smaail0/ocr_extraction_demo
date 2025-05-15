@@ -19,7 +19,7 @@ class PrescriptionBase(BaseModel):
     pharmacyFiscalId: Optional[str]
 
     beneficiaryId: Optional[str]
-    patientIdentity: str
+    patientIdentity: Optional[str] = ""
     prescriberCode: Optional[str]
     prescriptionDate: Optional[str]
     regimen: Optional[str]
@@ -29,8 +29,8 @@ class PrescriptionBase(BaseModel):
     pharmacistCnamRef: Optional[str]
 
     items: List[PrescriptionItem]
-    total: Optional[str]
-    totalInWords: Optional[str]
+    total: Optional[str] = ""
+    totalInWords: Optional[str] = ""
 
 class PrescriptionCreate(PrescriptionBase):
     beneficiaryId: str

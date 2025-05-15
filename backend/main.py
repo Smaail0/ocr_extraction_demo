@@ -5,7 +5,7 @@ from typing import List
 from fastapi import Body
 import tempfile
 from pathlib import Path
-import cv2
+import cv2, logging
 from fastapi import FastAPI, File, HTTPException, Depends, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import desc
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from .schemas import PatientWithDocs
 from . import models, schemas
 from .database import engine, SessionLocal
+from fastapi.staticfiles import StaticFiles
 from .services.azure import classify_form_on_bytes, parse_bulletin_ocr, parse_prescription_ocr
 from azure_model.pipeline import classify_form
 
@@ -26,6 +27,12 @@ PRESC_HDR = cv2.imread(str(BASE / "assets" /"ordonnance_header1.png"))
 BULL_HDR = cv2.imread(str(BASE / "assets" /"bulletin_de_soin_header1.png"))
 if PRESC_HDR is None or BULL_HDR is None:
     raise RuntimeError("Could not load header templates – check your paths!")
+SIGNATURE_DIR = os.path.join(os.path.dirname(__file__), "..", "signatures")
+app.mount(
+    "/signatures",
+    StaticFiles(directory=SIGNATURE_DIR),
+    name="signatures",
+)
 
 # ── CORS ──
 app.add_middleware(
@@ -43,6 +50,18 @@ def get_db():
         yield db
     finally:
         db.close()
+        
+def is_mostly_empty(parsed: dict, threshold: float = 0.9) -> bool:
+    
+    keys = [k for k in parsed.keys() if k != "header"]
+    if not keys:
+        return True
+    empty_count = 0
+    for k in keys:
+        v = parsed[k]
+        if v is None or v == "" or v == [] or v == {}:
+            empty_count += 1
+    return (empty_count / len(keys)) >= threshold
 
 def get_or_create_patient_by_name(db: Session, first: str, last: str) -> models.Patient:
     patient = (
@@ -66,7 +85,7 @@ async def parse_document(file: UploadFile = File(...)):
         tmp.write(data)
         tmp_path = Path(tmp.name)
 
-    # LOCAL classification only
+    # 1) do your ORB‐based, page‐by‐page classification
     form_key = classify_form(
         scan_path=tmp_path,
         presc_hdr_img=PRESC_HDR,
@@ -74,16 +93,41 @@ async def parse_document(file: UploadFile = File(...)):
     )
     tmp_path.unlink()
 
-    # now dispatch to Azure
+    # 2) send to Azure
     try:
         if form_key == "prescription":
             parsed = await parse_prescription_ocr(data, file.filename)
-        else :
+        else:
             parsed = await parse_bulletin_ocr(data, file.filename)
-
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
 
+    # 3) SANITY CHECK: if Azure returned no meaningful rows, override to “unknown”
+    if form_key == "prescription":
+        # prescription must have at least one item
+        if not parsed.get("items"):
+            raise HTTPException(
+                status_code=400,
+                detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
+            )
+    else:
+        tables = (
+            parsed.get("consultationsDentaires", [])
+            + parsed.get("prothesesDentaires", [])
+            + parsed.get("consultationsVisites", [])
+            + parsed.get("actesMedicaux", [])
+            + parsed.get("actesParamed", [])
+            + parsed.get("biologie", [])
+            + parsed.get("hospitalisation", [])
+            + parsed.get("pharmacie", [])
+        )
+        if not any(tables):
+            raise HTTPException(
+                status_code=400,
+                detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
+            )
+
+    # 4) if we get here, everything looks good
     return {"header": {"documentType": form_key}, **parsed}
 
 @app.get("/patients/{first_name}/{last_name}", response_model=schemas.PatientWithDocs)
@@ -130,8 +174,6 @@ def create_bulletin(
     db.refresh(db_bulletin)
     return db_bulletin
 
-
-# ── Create Prescription ──
 @app.post("/prescription/", response_model=schemas.Prescription)
 def create_prescription(
     presc: schemas.PrescriptionCreate,
@@ -150,7 +192,7 @@ def create_prescription(
     patient = get_or_create_patient_by_name(db, first, last)
 
     # 2) create the prescription row
-    data = presc.dict(exclude={"beneficiaryId", "patientIdentity"})
+    data = presc.dict(exclude={"beneficiaryId"})
     db_presc = models.Prescription(
         **data,
         beneficiaryId=presc.beneficiaryId,

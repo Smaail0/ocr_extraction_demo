@@ -5,6 +5,7 @@ import { FormsModule }         from '@angular/forms';
 import { DocumentsService }    from '../../services/documents.service';
 import { Prescription, PrescriptionCreate }        from '../../models/prescription.model';
 import writtenNumber from 'written-number'
+import { environment } from '../../../environments/environment';
 import { ExtractedTabsComponent }  from '../extracted-tabs/extracted-tabs.component';
 
 writtenNumber.defaults.lang = 'fr';
@@ -30,6 +31,12 @@ export class PrescriptionComponent implements OnInit {
   errorMessage: string = '';
   successMessage: string = '';
   processingFile: boolean = false;
+
+  get signatureUrl(): string | null {
+    return this.prescription.signatureCropFile
+      ? `${environment.apiBaseUrl}/${this.prescription.signatureCropFile}`
+      : null;
+  }
 
   files: any[] = [];
   selectedIndex = 0;
