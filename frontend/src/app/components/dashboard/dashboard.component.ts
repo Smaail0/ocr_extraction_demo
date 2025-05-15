@@ -38,7 +38,7 @@ export class DashboardComponent implements OnInit {
   flaggedBulletins = 0;
   newDocumentsThisWeek = 0;
 
-  // Filter form
+
   filterForm = new FormGroup({
     searchTerm: new FormControl(''),
     type: new FormControl('all'),
@@ -50,8 +50,9 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadAllDocuments();
+    this.getPatientData();
     
-    // Set up search and filter subscriptions
+
     this.filterForm.get('searchTerm')?.valueChanges
       .pipe(debounceTime(300))
       .subscribe(() => this.applyFilters());
@@ -61,34 +62,49 @@ export class DashboardComponent implements OnInit {
     this.filterForm.get('date')?.valueChanges.subscribe(() => this.applyFilters());
   }
 
+  getPatientData() {
+  const firstName = '';
+  const lastName = '';
+
+  this.documentsService.getPatientWithDocs(firstName, lastName).subscribe({
+    next: patient => {
+      console.log('Patient with documents:', patient);
+      // Optionally, update some local state or UI here
+    },
+    error: err => {
+      console.error('Patient not found or error occurred', err);
+    }
+  });
+}
   loadAllDocuments() {
-    // Load ordonnances
     this.documentsService.getAllUploadedOrdonnances().subscribe(ordonnances => {
-      const ordonnanceDocs = ordonnances.map(ord => {
-        return {
-          id: ord.id,
-          patient_name: ord.patient_name,
-          patient_id: ord.patient_id,
-          type: 'ordonnance' as const,
-          date: ord.created_at || new Date().toISOString(),
-          status: ord.status || 'pending'
-        };
-      });
+      console.log('Ordonnances:', ordonnances); 
+    const ordonnanceDocs = ordonnances.map(ord => {
+    const fullName = `${ord.first_name || ''} ${ord.last_name || ''}`.trim();
+    return {
+      id: ord.id,
+      patient_name: fullName || `Patient ${ord.id}`,
+      patient_id: ord.patient_id,
+      type: 'ordonnance' as const,
+      date: ord.uploaded_at || new Date().toISOString(),
+      status: ord.status || 'pending'
+  };
+});
       
-      // Load bulletins
-      this.documentsService.getAllUploadedBulletins().subscribe(bulletins => {
-        const bulletinDocs = bulletins.map(bulletin => {
-          return {
-            id: bulletin.id,
-            patient_name: bulletin.patient_name,
-            patient_id: bulletin.patient_id,
-            type: 'bulletin' as const,
-            date: bulletin.uploaded_at || new Date().toISOString(),
-            status: bulletin.status || 'pending'
-          };
-        });
+    this.documentsService.getAllUploadedBulletins().subscribe(bulletins => {
+      console.log('Bulletins:', bulletins);
+    const bulletinDocs = bulletins.map(bulletin => {
+      const fullName = `${bulletin.prenom || ''} ${bulletin.nom || ''}`.trim();
+      return {
+        id: bulletin.id,
+        patient_name: fullName || `Patient ${bulletin.id || 'Sans Nom'}`,
+        patient_id: bulletin.patient_id || bulletin.id?.toString() || 'N/A',
+        type: 'bulletin' as const,
+        date: bulletin.uploaded_at || new Date().toISOString(),
+        status: bulletin.status || 'verified'
+      };
+    });
         
-        // Combine the documents
         this.documents = [...ordonnanceDocs, ...bulletinDocs];
         this.filteredDocuments = this.documents;
         
@@ -171,12 +187,14 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-openUploadModal() {
-  this.dialog.open(UploadDocComponent, {
-    width: '600px', // or whatever size you need
-    data: {} // optional
-  });
-}
+  openUploadModal() {
+    this.dialog.open(UploadDocComponent, {
+      width: '80%',
+      maxWidth: '1000px',
+      height: '90%',
+      maxHeight: '1000px'
+    });
+  }
 
   viewDocument() {
     this.router.navigate(['/extracted']);
@@ -185,6 +203,4 @@ openUploadModal() {
   editDocument(documentId: number, type: string) {
     this.router.navigate([`/documents/${type}/${documentId}/edit`]);
   }
-
-
 }

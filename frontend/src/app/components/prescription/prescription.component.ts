@@ -134,6 +134,7 @@ export class PrescriptionComponent implements OnInit {
     }
   }
 
+// Enhanced saveToDb method for prescription.component.ts
 saveToDb(): void {
   // 1) build a proper PrescriptionCreate payload from your UI model
   const payload: PrescriptionCreate = {
@@ -156,15 +157,30 @@ saveToDb(): void {
 
   console.log('📤 Saving prescription:', payload);
 
+  // Show loading state
+  this.successMessage = '';
+  this.errorMessage = '';
+
   // 2) call the service
   this.documentsService.savePrescription(payload).subscribe({
     next: presc => {
       console.log('✅ Saved prescription:', presc);
       this.successMessage = 'Ordonnance enregistrée en base !';
+      // Update the prescription with any server-generated fields (like ID)
+      Object.assign(this.prescription, presc);
     },
     error: err => {
       console.error('❌ Saving prescription failed', err);
-      this.errorMessage = 'Échec de l’enregistrement.';
+      if (err.status === 400) {
+        // Bad request - likely validation error
+        this.errorMessage = `Erreur de validation: ${err.error?.detail || 'Données invalides'}`;
+      } else if (err.status === 0) {
+        // Network error - likely CORS
+        this.errorMessage = 'Erreur de connexion au serveur. Vérifiez le CORS et la connectivité.';
+      } else {
+        // Other errors
+        this.errorMessage = `Échec de l'enregistrement: ${err.error?.detail || err.message || 'Erreur inconnue'}`;
+      }
     }
   });
 }

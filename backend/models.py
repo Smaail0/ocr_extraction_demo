@@ -15,7 +15,7 @@ class Patient(Base):
     last_name   = Column(String, nullable=False, index=True)
     created_at  = Column(DateTime, default=datetime.utcnow)
     updated_at  = Column(DateTime, default=datetime.utcnow,
-                         onupdate=datetime.utcnow)
+    onupdate    = datetime.utcnow)
 
     bulletins     = relationship("Bulletin",    back_populates="patient")
     prescriptions = relationship("Prescription", back_populates="patient")

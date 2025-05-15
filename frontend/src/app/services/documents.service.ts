@@ -91,6 +91,16 @@ export class DocumentsService {
     );
   }
 
+  getPatientWithDocs(firstName: string, lastName: string): Observable<any> {
+  return this.http.get<any>(`${this.apiUrl}/patients/${firstName}/${lastName}`).pipe(
+    tap(res => console.log('Fetched patient:', res)),
+    catchError((error: HttpErrorResponse) => {
+      console.error('Error fetching patient:', error);
+      return throwError(() => error);
+    })
+  );
+}
+
   getPrescriptionById(id: number): Observable<Prescription> {
     return this.http
       .get<Prescription>(`${this.apiUrl}/prescription/${id}`)
@@ -111,9 +121,17 @@ export class DocumentsService {
     );
 }
 
-  savePrescription(p: PrescriptionCreate): Observable<Prescription> {
-    return this.http.post<Prescription>(`${this.apiUrl}/prescription`, p);
-  }
+savePrescription(p: PrescriptionCreate): Observable<Prescription> {
+  const headers = { 'Content-Type': 'application/json' };
+  return this.http.post<Prescription>(`${this.apiUrl}/prescription/`, p, { headers })
+    .pipe(
+      tap(res => console.log('Prescription saved:', res)),
+      catchError((error: HttpErrorResponse) => {
+        console.error('Error saving prescription:', error);
+        return throwError(() => error);
+      })
+    );
+}
   
   // Ordonnance methods
   uploadOrdonnances(files: File[]): Observable<any> {

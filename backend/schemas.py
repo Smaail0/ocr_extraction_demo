@@ -19,7 +19,8 @@ class PrescriptionBase(BaseModel):
     pharmacyFiscalId: Optional[str]
 
     beneficiaryId: Optional[str]
-    patientIdentity: str
+
+
     prescriberCode: Optional[str]
     prescriptionDate: Optional[str]
     regimen: Optional[str]
@@ -34,6 +35,7 @@ class PrescriptionBase(BaseModel):
 
 class PrescriptionCreate(PrescriptionBase):
     beneficiaryId: str
+    patientIdentity: str
 
 class Prescription(PrescriptionBase):
     id: int
@@ -63,6 +65,8 @@ class BulletinBase(BaseModel):
     convbi:            bool = False
     patientType:       Optional[str] = None
 
+
+
     consultationsDentaires: List[Dict[str,str]] = Field(default_factory=list, alias="consultationsDentaires")
     prothesesDentaires:     List[Dict[str,str]] = Field(default_factory=list, alias="prothesesDentaires")
     consultationsVisites:   List[Dict[str,str]] = Field(default_factory=list, alias="consultationsVisites")
@@ -87,6 +91,7 @@ class BulletinBase(BaseModel):
 
 class BulletinCreate(BulletinBase):
     identifiantUnique: str 
+    patientIdentity: str
 
 class Bulletin(BulletinBase):
     id: int

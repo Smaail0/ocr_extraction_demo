@@ -22,13 +22,13 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Medical Documents API")
 
 BASE = Path(__file__).resolve().parent.parent
-# ── Load header templates ──
+
 PRESC_HDR = cv2.imread(str(BASE / "assets" /"ordonnance_header1.png"))
 BULL_HDR = cv2.imread(str(BASE / "assets" /"bulletin_de_soin_header1.png"))
 if PRESC_HDR is None or BULL_HDR is None:
     raise RuntimeError("Could not load header templates – check your paths!")
 
-# ── CORS ──
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:4200"],
@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Dependency ──
+
 def get_db():
     db = SessionLocal()
     try:
@@ -45,12 +45,8 @@ def get_db():
     finally:
         db.close()
 
-def get_or_create_patient_by_name(db: Session, first: str, last: str) -> models.Patient:
-    patient = (
-        db.query(models.Patient)
-          .filter_by(first_name=first, last_name=last)
-          .first()
-    )
+def get_or_create_patient_by_name(db: Session, first: str, last: str):
+    patient = db.query(models.Patient).filter_by(first_name=first, last_name=last).first()
     if not patient:
         patient = models.Patient(first_name=first, last_name=last)
         db.add(patient)
@@ -58,7 +54,7 @@ def get_or_create_patient_by_name(db: Session, first: str, last: str) -> models.
         db.refresh(patient)
     return patient
 
-# ── OCR Parse endpoint ──
+
 @app.post("/documents/parse")
 async def parse_document(file: UploadFile = File(...)):
     data = await file.read()
@@ -106,30 +102,40 @@ def get_patient_by_name(
         raise HTTPException(404, "Patient not found")
     return patient
 
-# ── Create Bulletin ──
+
 @app.post("/bulletin/", response_model=schemas.Bulletin)
-def create_bulletin(
-    bulletin: schemas.BulletinCreate,
-    db: Session = Depends(get_db)
-):
-    # require a name to group on
-    if not bulletin.prenom or not bulletin.nom:
-        raise HTTPException(400, "Missing first or last name in bulletin")
+def create_bulletin(bulletin: schemas.BulletinCreate, db: Session = Depends(get_db)):
+    print(f"Received bulletin data: {bulletin}")
 
-    # 1) find or create the patient
-    patient = get_or_create_patient_by_name(db, bulletin.prenom, bulletin.nom)
+    try:
+        # More robust name handling
+        name_parts = bulletin.patientIdentity.strip().split(" ", 1)
+        if len(name_parts) < 2:
+            first = name_parts[0]
+            last = ""  # You could also raise an error here
+        else:
+            first, last = name_parts
 
-    # 2) grab only the scalar fields that your model actually defines
-    data = bulletin.model_dump()  
+        # Find or create the patient
+        patient = get_or_create_patient_by_name(db, first, last)
 
-    db_bulletin = models.Bulletin(
-        **data,
-        patient_id=patient.id
-    )
-    db.add(db_bulletin)
-    db.commit()
-    db.refresh(db_bulletin)
-    return db_bulletin
+        # Exclude patientIdentity before building SQLAlchemy object
+        data = bulletin.dict(exclude={"patientIdentity"})
+
+        db_bulletin = models.Bulletin(
+            **data,
+            patient_id=patient.id
+        )
+
+        db.add(db_bulletin)
+        db.commit()
+        db.refresh(db_bulletin)
+        return db_bulletin
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating bulletin: {str(e)}")
+        raise HTTPException(500, f"Failed to save bulletin: {str(e)}")
 
 
 # ── Create Prescription ──
@@ -138,29 +144,40 @@ def create_prescription(
     presc: schemas.PrescriptionCreate,
     db: Session = Depends(get_db)
 ):
-    if not presc.items:
-        raise HTTPException(400, "Prescription must have at least one item")
-
-    # split the "First Last" into two parts
+    print(f"Received prescription data: {presc}")
     try:
-        first, last = presc.patientIdentity.split(" ", 1)
-    except ValueError:
-        raise HTTPException(400, "patientIdentity must be 'First Last'")
+        if not presc.items:
+            raise HTTPException(400, "Prescription must have at least one item")
 
-    # 1) find or create the patient by name
-    patient = get_or_create_patient_by_name(db, first, last)
+        # More robust name handling
+        name_parts = presc.patientIdentity.strip().split(" ", 1)
+        if len(name_parts) < 2:
+            first = name_parts[0]
+            last = ""  # Or set a default
+        else:
+            first, last = name_parts
 
-    # 2) create the prescription row
-    data = presc.dict(exclude={"beneficiaryId", "patientIdentity"})
-    db_presc = models.Prescription(
+        # Find or create the patient by name
+        patient = get_or_create_patient_by_name(db, first, last)
+
+        # Create the prescription row
+        data = presc.dict(exclude={"beneficiaryId", "patientIdentity"})  # Exclude fields not in DB model
+        db_presc = models.Prescription(
         **data,
         beneficiaryId=presc.beneficiaryId,
+        patientIdentity=presc.patientIdentity,  # Add this line
         patient_id=patient.id
-    )
-    db.add(db_presc)
-    db.commit()
-    db.refresh(db_presc)
-    return db_presc
+        )
+        db.add(db_presc)
+        db.commit()
+        db.refresh(db_presc)
+        return db_presc
+    
+    except Exception as e:
+        db.rollback()  # Rollback transaction on error
+        # Log the actual error
+        print(f"Error creating prescription: {str(e)}")
+        raise HTTPException(500, f"Failed to save prescription: {str(e)}")
 
 UPLOAD_DIR = "bulletins"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -362,13 +379,11 @@ def update_bulletin(
     db.refresh(db_b)
     return db_b
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
 
 
-#@app.on_event("startup")
-#def reset_database_on_startup():
+
+@app.on_event("startup")
+def reset_database_on_startup():
     models.Base.metadata.drop_all(bind=engine)
     models.Base.metadata.create_all(bind=engine)
 

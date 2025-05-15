@@ -94,17 +94,15 @@ export class BulletinComponent implements OnInit {
   }
 
   private populateForm(parsed: any): void {
-    // 1) clear any previous banner
+
     this.showStatusAlert = false;
   
-    // 2) alias
+
     const src = parsed || {};
   
-    // 3) rebuild formData (everything except the identifiant 12-box)
     this.formData = {
       ...this.formData,
-  
-      // simple fields
+
       prenom:            src.prenom             || '',
       nom:               src.nom                || '',
       adresse:           src.adresse            || '',
@@ -122,8 +120,7 @@ export class BulletinComponent implements OnInit {
       nomMalade:         src.nomMalade          || '',
       dateNaissance:     src.dateNaissance      || '',
       nomPrenomMalade:   src.nomPrenomMalade    || '',
-  
-      // ── remap each table into exactly the keys your template expects ──
+
       consultations: this.mapRows(src.consultationsDentaires    || [], [
         'date','dent','codeActe','cotation','honoraires','codePs','signature'
       ]).slice(1),
@@ -149,29 +146,26 @@ export class BulletinComponent implements OnInit {
         'date','montant','codePs','signature'
       ]).slice(1),
   
-      // page-2 checks & extras
       apci:             !!src.apci,
       mo:               !!src.mo,
       hosp:             !!src.hospitalisationCheck,
       grossesse:        !!src.suiviGrossesseCheck,
       codeApci:         src.codeApci           || '',
       dateAccouchement: src.datePrevu          || null,
-  
-      // preserve dropdown / radio selection
+
       patientType:      this.formData.patientType
     };
-  
-    // 4) split out the 12-box identifiant
+ 
     this.identifiant = Array.from(
       { length: 12 },
       (_, i) => (this.formData.identifiantUnique || '')[i] || ''
     );
   
-    // 5) auto‐hide the “saved” banner
-    setTimeout(() => this.showStatusAlert = false, 3_000);
+
+    setTimeout(() => this.showStatusAlert = false, 3000);
   }  
 
-  /** Only one patient type allowed, and only in edit mode */
+
   setPatientType(type: 'assureSocial' | 'conjoint' | 'enfant' | 'ascendant'): void {
     if (!this.isEditMode) return;
     this.formData.assureSocial = (type === 'assureSocial');
@@ -180,7 +174,7 @@ export class BulletinComponent implements OnInit {
     this.formData.ascendant    = (type === 'ascendant');
   }
 
-  /** Toggle between view and edit modes */
+
   toggleEditMode(): void {
     if (this.isEditMode) {
       this.saveChanges();
@@ -191,13 +185,12 @@ export class BulletinComponent implements OnInit {
   }
 
   saveChanges(): void {
-    // 1) leave edit mode & show the “changes saved” banner
+
     this.isEditMode      = false;
     this.showStatusAlert = true;
   
-    // 2) build a payload matching your Pydantic model exactly
     const payload = {
-      // ○ simple scalar fields
+
       prenom:            this.formData.prenom,
       nom:               this.formData.nom,
       adresse:           this.formData.adresse,
@@ -208,8 +201,9 @@ export class BulletinComponent implements OnInit {
       cnss:              this.formData.cnss,
       cnrps:             this.formData.cnrps,
       convbi:            this.formData.convbi,
-  
-      // ○ the eight JSON table columns
+
+      patientIdentity: `${this.formData.prenom} ${this.formData.nom}`.trim(),
+
       consultationsDentaires: this.formData.consultations,
       prothesesDentaires:     this.formData.protheses,
       consultationsVisites:   this.formData.visites,
@@ -218,16 +212,14 @@ export class BulletinComponent implements OnInit {
       biologie:               this.formData.biologie,
       hospitalisation:        this.formData.hospitals,
       pharmacie:              this.formData.pharmacie,
-  
-      // ○ healthcare-professional section
+
       apci:                   this.formData.apci,
       mo:                     this.formData.mo,
       hosp:                   this.formData.hosp,
       grossesse:              this.formData.grossesse,
       codeApci:               this.formData.codeApci,
       dateAccouchement:       this.formData.dateAccouchement,
-  
-      // ○ patient type & patient info
+
       assureSocial:           this.formData.assureSocial,
       conjoint:               this.formData.conjoint,
       enfant:                 this.formData.enfant,
@@ -240,10 +232,9 @@ export class BulletinComponent implements OnInit {
       nomPrenomMalade:        this.formData.nomPrenomMalade
     };
   
-    // 3) send it up
     this.documentsService.saveBulletinData(payload).subscribe({
       next: saved => {
-        // if we got back an `id`, store it so future saves do PUT instead of POST
+
         this.formData.id = saved.id;
         console.log('✅ Saved to DB:', saved);
       },
@@ -253,7 +244,6 @@ export class BulletinComponent implements OnInit {
       }
     });
   
-    // 4) auto-hide the banner
     setTimeout(() => this.showStatusAlert = false, 3000);
   }
   
@@ -273,6 +263,7 @@ export class BulletinComponent implements OnInit {
       ...this.formData,
       identifiantUnique: this.identifiant.join(''),
       id: this.formData.id,
+      patientIdentity: `${this.formData.prenom} ${this.formData.nom}`.trim(),
     };
   }
 
