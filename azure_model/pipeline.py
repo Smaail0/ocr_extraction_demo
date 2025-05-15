@@ -1,12 +1,12 @@
 import os
-import sys
-import argparse
 import logging
 from pathlib import Path
 import tempfile, os
 import cv2
 import re
 import numpy as np
+import pandas as pd
+from rapidfuzz import process, fuzz
 from pdf2image import convert_from_path
 from dotenv import load_dotenv
 from azure.core.credentials import AzureKeyCredential
@@ -16,18 +16,58 @@ from .signature_pipeline import get_doctor_name, get_signature_crop
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 load_dotenv()
 
-ENDPOINT = os.getenv("DOCUMENT_INTELLIGENCE_ENDPOINT")
-KEY      = os.getenv("DOCUMENT_INTELLIGENCE_API_KEY")
-SIGNATURE_MODEL_ID = os.getenv("SIGNATURE_MODEL_ID")
-sig_client = None
-if SIGNATURE_MODEL_ID:
-    sig_client = DocumentIntelligenceClient(ENDPOINT, AzureKeyCredential(KEY))
+ENDPOINT = "https://iway.cognitiveservices.azure.com"
+KEY = "DszvIykXxKf5EbrKjS5c1GxRjaA0Fd2ak7ITBvUMmqIF5umt8dk6JQQJ99BEACi5YpzXJ3w3AAALACOGQM1J"
     
 if not (ENDPOINT and KEY):
-    raise SystemExit("❌  Set DOCUMENT_INTELLIGENCE_ENDPOINT & DOCUMENT_INTELLIGENCE_API_KEY in .env")
+    raise SystemExit("Set DOCUMENT_INTELLIGENCE_ENDPOINT & DOCUMENT_INTELLIGENCE_API_KEY in .env")
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+amm_path = os.path.join(current_dir, "liste_amm.xls")
+med_ref = pd.read_excel(amm_path)
 
 client = DocumentIntelligenceClient(ENDPOINT, AzureKeyCredential(KEY))
+model_id = "ordonnance"
+print("Listing models available on your Azure resource...")
+try:
+    # For new SDKs (azure-ai-documentintelligence)
+    models = client.list_models()
+    for model in models:
+        print("Model ID:", model.model_id)
+except AttributeError:
+    try:
+        # For older SDKs (azure-ai-formrecognizer)
+        models = client.list_custom_models()
+        for model in models:
+            print("Model ID:", model.model_id)
+    except Exception as e:
+        print("Could not list models:", e)
 
+def list_available_models():
+    """Print all available models in the Azure Document Intelligence resource"""
+    try:
+        # For newer SDK versions
+        result = client.list_models()
+        print("Available models in your Azure resource:")
+        for model in result:
+            print(f"- {model.model_id} (Created: {model.created_on})")
+        return result
+    except AttributeError:
+        try:
+            # For older SDK versions
+            result = client.list_custom_models()
+            print("Available custom models in your Azure resource:")
+            for model in result:
+                print(f"- {model.model_id} (Created: {model.created_date_time})")
+            return result
+        except Exception as e:
+            print(f"Error listing models with alternate method: {e}")
+            return []
+    except Exception as e:
+        print(f"Error listing models: {e}")
+        return []
+
+available_models = list_available_models()
 def analyze_document(scan_path: Path, model_id: str, pages: list[str]):
     """
     Sends the raw PDF or image stream to Azure custom model.
@@ -39,6 +79,13 @@ def analyze_document(scan_path: Path, model_id: str, pages: list[str]):
             pages=pages
         )
     return poller.result()
+
+def correct_medication_name(raw, med_ref_threshold=80):
+    match, score, idx = process.extractOne(raw, med_ref["Nom"], scorer=fuzz.ratio)
+    if score >= med_ref_threshold:
+        return med_ref.iloc[idx].to_dict(), score
+    return None, score
+
 
 def dump_results(result, output_txt: Path, min_conf: float = 0.1):
 
@@ -156,7 +203,8 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
             tmp_path = Path(tmp.name)
 
         # 2) call Azure
-        model_id = os.getenv("BULLETIN_MODEL_ID")
+        model_id = "ordonnance"
+        print(f"Using model ID: {model_id}")
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
@@ -298,45 +346,49 @@ def extract_all_tables(result) -> List[List[List[str]]]:
         all_grids.append(grid)
     return all_grids
 
-# assume analyze_document and classify_form are already defined above
-
-def analyze_document(scan_path: Path, model_id: str, pages: list[str] | None):
+#def analyze_document(scan_path: Path, model_id: str, pages: list[str] | None):
     with open(scan_path, "rb") as f:
         poller = client.begin_analyze_document(model_id, body=f, pages=pages)
     return poller.result()
 
+def has_signature_coordinates(result) -> bool:
+    doc = result.documents[0]
+    sig_field = doc.fields.get("docteurSignatureRegion")
+    if not sig_field:
+        return False
+    bounding_regions = getattr(sig_field, "bounding_regions", None)
+    return bool(bounding_regions and len(bounding_regions) > 0)
+
 def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
     tmp_path: Optional[Path] = None
     try:
-        # ─── 1) dump bytes to temp file ────────────────────────────────
+        # 1) dump bytes to temp file
         suffix = Path(filename).suffix or ".pdf"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(file_bytes)
             tmp_path = Path(tmp.name)
 
-        # ─── 2) call Azure Document Intelligence ───────────────────────
-        model_id = os.getenv("ORDONNANCE_MODEL_ID")
+        # 2) call Azure Document Intelligence
+        model_id = "ordonnance"
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
 
-        # ─── GUARD: ensure at least one table back ─────────────────────
+        # GUARD: ensure at least one table back
         raw_tables = result.tables
         if len(raw_tables) < 1:
             raise ValueError(f"Expected at least 1 table but found {len(raw_tables)}; not a valid prescription.")
 
         logging.info("Processing document fields: %s", list(f.keys()))
-        logging.info("Tables found by column count: %s",
-                     [tbl.column_count for tbl in result.tables])
+        logging.info("Tables found by column count: %s", [tbl.column_count for tbl in result.tables])
 
-        # ─── helper to pull raw text or content ───────────────────────
         def txt(key: str) -> Optional[str]:
             fld = f.get(key)
             if not fld:
                 return None
             return fld.get("valueString") or fld.get("content")
 
-        # ─── 3) rebuild all tables into (col_count, matrix) ────────────
+        # 3) parse all tables into (col_count, matrix)
         tables: list[tuple[int, list[list[str]]]] = []
         for tbl in result.tables:
             mat = [[""] * tbl.column_count for _ in range(tbl.row_count)]
@@ -347,7 +399,7 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         items_mat = next((m for c, m in tables if c >= 8), None)
         meta_mat  = next((m for c, m in tables if c == 2), None)
 
-        # ─── 4) parse the 8-col items (and footer) ────────────────────
+        # 4) parse the 8-col items (and footer)
         items: list[dict] = []
         total: Optional[str] = None
         if items_mat and len(items_mat) > 1:
@@ -367,7 +419,7 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             if footer and footer[0].lower().startswith("total"):
                 total = footer[0]
 
-        # ─── 5) parse the 2-col metadata ───────────────────────────────
+        # 5) parse the 2-col metadata
         beneficiaryId = patientIdentity = prescriberCode = None
         prescriptionDate = regimen = dispensationDate = None
 
@@ -398,7 +450,7 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
                 elif "date de dispensation" in key:
                     dispensationDate = val or dispensationDate
 
-        # ─── 6) SAFE FALLBACKS for missing metadata ────────────────────
+        # 6) SAFE FALLBACKS for missing metadata
         beneficiaryId    = beneficiaryId   or txt("id_unique") or ""
         formatted_id     = format_prescription_id(beneficiaryId)
         patientIdentity  = patientIdentity or txt("nom_prenom") or ""
@@ -407,12 +459,12 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         dispensationDate = dispensationDate or txt("date_numero")
         regimen          = regimen          or txt("regime")
 
-        # ─── 7) fallback items from `prescription_items` array ────────
+        # 7) fallback items from `prescription_items` array or from 'medications' free-text field
         if not items and f.get("prescription_items"):
             arr = f["prescription_items"].get("valueArray", [])
             for idx, row in enumerate(arr):
                 cells = [(c.get("valueString") or c.get("content") or "").strip()
-                         for c in row.get("valueArray", [])]
+                        for c in row.get("valueArray", [])]
                 if idx == 0:
                     continue
                 if cells and cells[0].lower().startswith("total"):
@@ -425,11 +477,37 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
                     "forme":   c_,
                     "qte":     d,
                 })
+        elif not items and txt("medications"):
+            meds_text = txt("medications")
+            med_lines = re.split(r"[-,]", meds_text)
+            med_lines = [line.strip() for line in med_lines if line.strip()]
+            for line in med_lines:
+                # Fuzzy match for med name
+                corrected, score = correct_medication_name(line, med_ref)
+                name = corrected["name"] if corrected else line
 
-        # ─── 8) fallback total from the raw field ──────────────────────
+                # Extract the first number as dosage
+                dosage_match = re.search(r"\b(\d+(\.\d+)?)(?:\s?(mg|ml|g|mcg))?\b", line, re.IGNORECASE)
+                dosage = dosage_match.group(1) if dosage_match else ""
+
+                # Combine for produit
+                produit = f"{name} {dosage}".strip()
+
+                items.append({
+                    "codePCT": "NA",
+                    "produit": produit,
+                    "forme": "NA",
+                    "qte": "NA",
+                    "puv": "NA",
+                    "montantPercu": "NA",
+                    "nio": "NA",
+                    "prLot": "NA",
+                })
+
+        # 8) fallback total from the raw field
         total = total or txt("total_ttc") or ""
 
-        # ─── 9) split the `pharmacie` blob ────────────────────────────
+        # 9) split the `pharmacie` blob
         raw_pharm    = txt("pharmacie") or ""
         parts        = re.split(r"Tél[:]? *", raw_pharm, maxsplit=1)
         main_part    = parts[0].strip()
@@ -456,11 +534,16 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         fisc_m          = re.search(r"Matricule\s+Fisc[^\w]*(\w+)", contact_part, re.IGNORECASE)
         pharmacyFiscalId = fisc_m.group(1).strip() if fisc_m else None
 
-        # ─── 10) executor & CNAM ref ───────────────────────────────────
-        executor          = txt("info_medecin")
-        pharmacistCnamRef = txt("code_cnam")
+        # ─── 10) NEW FIELDS (doctor info, CNAM fields, etc.) ────────────
+        # Executor/exécuteur: standardize on `executor` or `executeur` everywhere
+        executor          = txt("executeur") or txt("info_medecin") or ""
+        pharmacistCnamRef = txt("ref_cnam") or txt("code_cnam") or ""
+        # Prescriber code fallback logic for code_cnam field
+        code_cnam = prescriberCode or txt("code_cnam") or ""
+        # Doctor signature fields
+        signatureDocteurField = txt("signatureDocteurField") or ""
+        nom_prenom_docteur    = txt("nom_prenom_docteur") or ""
 
-        # ─── 11) build final dict ──────────────────────────────────────
         output = {
             "header":            {"documentType": "prescription"},
             "pharmacyName":      pharmacyName,
@@ -475,31 +558,32 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             "prescriptionDate":  prescriptionDate,
             "regimen":           regimen,
             "dispensationDate":  dispensationDate,
-            "executor":          executor,
-            "pharmacistCnamRef": pharmacistCnamRef,
+            "executor":          executor,           
+            "ref_cnam":          pharmacistCnamRef,  
+            "code_cnam":         code_cnam,
+            "signatureDocteurField": signatureDocteurField,  
+            "nom_prenom_docteur":   nom_prenom_docteur,
 
             "items":             items,
             "total":             total,
         }
 
         # ─── 12) signature crop & naming ────────────────────────────────
-        if sig_client:
-            # sanitize the doctor's name
-            doc_name = get_doctor_name(tmp_path, sig_client, SIGNATURE_MODEL_ID)
-            # crop the signature
-            sig_crop = get_signature_crop(tmp_path)
-
-            sig_dir = Path("signatures")
-            sig_dir.mkdir(exist_ok=True)
-            crop_path = sig_dir / f"{doc_name}_signature.png"
-            cv2.imwrite(str(crop_path), sig_crop)
-
-            output["signatureCropFile"] = str(crop_path)
-        else:
+        try:
+            # Only attempt cropping if coordinates exist (pseudo-code, adjust as needed)
+            if has_signature_coordinates(result):
+                doc_name = get_doctor_name(tmp_path)
+                sig_crop = get_signature_crop(tmp_path)
+                sig_dir = Path("signatures")
+                sig_dir.mkdir(exist_ok=True)
+                crop_path = sig_dir / f"{doc_name}_signature.png"
+                cv2.imwrite(str(crop_path), sig_crop)
+                output["signatureCropFile"] = str(crop_path)
+            else:
+                output["signatureCropFile"] = None
+        except Exception as e:
+            logging.error(f"Signature cropping failed: {e}")
             output["signatureCropFile"] = None
-
-        # ─── 13) return everything ──────────────────────────────────────
-        return output
 
     finally:
         if tmp_path and tmp_path.exists():

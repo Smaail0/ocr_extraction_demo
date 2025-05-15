@@ -50,7 +50,7 @@ export class UploadDocComponent {
   }
 
   get isSubmitDisabled(): boolean {
-    return this.uploadFiles.length !== this.MAX_FILES || this.isUploading;
+    return this.isUploading;
   }
 
   ngOnInit() {
