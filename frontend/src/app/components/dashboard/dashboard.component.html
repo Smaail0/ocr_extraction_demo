@@ -1,193 +1,378 @@
 <div class="dashboard">
-    <aside class="sidebar">
-        <ul class="nav-menu">
-            <li class="nav-item">
-                <a href="#" class="nav-link active">
-                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                    Tableau de bord
-                </a>
-            </li>
+  <aside class="sidebar">
+    <ul class="nav-menu">
+      <li class="nav-item">
+        <a href="#" class="nav-link active">
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          Tableau de bord
+        </a>
+      </li>
 
-            <li class="nav-item">
-                <a href="#" class="nav-link">
-                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <polyline points="10 9 9 9 8 9"></polyline>
-                    </svg>
-                    Documents
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link">
-                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"></path>
-                        <polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon>
-                    </svg>
-                    Vérifier
-                </a>
-            </li>
-        </ul>
-    </aside>
+      <li class="nav-item">
+        <a href="#" class="nav-link">
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+            ></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          Documents
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#" class="nav-link">
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"
+            ></path>
+            <polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon>
+          </svg>
+          Vérifier
+        </a>
+      </li>
+    </ul>
+  </aside>
 
-    <main class="main-content">
-        <div class="header">
-            <h1 class="page-title">Tableau de bord des documents</h1>
-            <div class="actions">
-                <button class="btn btn-primary" (click)="openUploadModal()">
-                    <svg style="width: 16px; height: 16px; margin-right: 5px" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
-                    Télécharger nouveau
-                </button>
-            </div>
+  <main class="main-content">
+    <div class="header">
+      <h1 class="page-title">Tableau de bord des documents</h1>
+      <div class="actions">
+        <button class="btn btn-primary" (click)="openUploadModal()">
+          <svg
+            style="width: 16px; height: 16px; margin-right: 5px"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          Télécharger nouveau
+        </button>
+      </div>
+    </div>
+
+    <!-- Patient Info Panel (conditionally displayed) -->
+    <div *ngIf="selectedPatient" class="patient-panel">
+      <div class="patient-header">
+        <div class="patient-avatar large">
+          {{
+            (selectedPatient.first_name?.charAt(0) || "") +
+              (selectedPatient.last_name?.charAt(0) || "")
+          }}
         </div>
-
-        <div class="stats-cards">
-            <div class="stat-card">
-                <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-                <div class="stat-title">Total de documents</div>
-                <div class="stat-value">{{ totalDocuments }}</div>
-                <div class="stat-desc">{{ newDocumentsThisWeek }} nouveaux cette semaine</div>
-            </div>
-
-            <div class="stat-card">
-                <svg class="stat-icon prescription-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
-                </svg>
-                <div class="stat-title">Ordonnances</div>
-                <div class="stat-value">{{ ordonnancesCount }}</div>
-                <div class="stat-desc">{{ pendingOrdonnances }} en attente de vérification</div>
-            </div>
-
-            <div class="stat-card">
-                <svg class="stat-icon care-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-                </svg>
-                <div class="stat-title">Bulletins de soins</div>
-                <div class="stat-value">{{ bulletinsCount }}</div>
-                <div class="stat-desc">{{ flaggedBulletins }} signalés pour révision</div>
-            </div>
+        <div class="patient-details">
+          <h2>
+            {{ selectedPatient.first_name }} {{ selectedPatient.last_name }}
+          </h2>
+          <p>ID: {{ selectedPatient.patient_id }}</p>
         </div>
-
-        <form [formGroup]="filterForm" class="filters">
-            <input type="text" class="search-box" placeholder="Rechercher des documents..." 
-                   formControlName="searchTerm">
-
-            <div class="filter-group">
-                <span class="filter-label">Type:</span>
-                <select class="select" formControlName="type">
-                    <option value="all">Tous les types</option>
-                    <option value="prescription">Ordonnance</option>
-                    <option value="care">Bulletin de soins</option>
-                </select>
+        <button class="btn-close" (click)="selectedPatient = null">×</button>
+      </div>
+      <div class="patient-documents">
+        <h3>Documents du patient</h3>
+        <div class="documents-list">
+          <div
+            *ngFor="let doc of selectedPatient.documents"
+            class="document-item"
+          >
+            <div class="document-type-icon" [ngClass]="doc.type">
+              <svg
+                *ngIf="doc.type === 'ordonnance'"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                ></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+              <svg
+                *ngIf="doc.type === 'bulletin'"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+              </svg>
             </div>
-
-            <div class="filter-group">
-                <span class="filter-label">Statut:</span>
-                <select class="select" formControlName="status">
-                    <option value="all">Tous les statuts</option>
-                    <option value="verified">Vérifié</option>
-                    <option value="pending">En attente</option>
-                    <option value="flagged">Signalé</option>
-                </select>
+            <div class="document-info">
+              <div class="document-title">
+                {{
+                  doc.type === "ordonnance" ? "Ordonnance" : "Bulletin de soins"
+                }}
+              </div>
+              <div class="document-date">
+                {{ doc.date | date : "d MMMM yyyy" : "" : "fr" }}
+              </div>
             </div>
-
-            <div class="filter-group">
-                <span class="filter-label">Date:</span>
-                <select class="select" formControlName="date">
-                    <option value="all">Tout le temps</option>
-                    <option value="today">Aujourd'hui</option>
-                    <option value="this-week">Cette semaine</option>
-                    <option value="this-month">Ce mois-ci</option>
-                </select>
+            <div class="document-status" [ngClass]="doc.status">
+              {{
+                doc.status === "verified"
+                  ? "Vérifié"
+                  : doc.status === "pending"
+                  ? "En attente"
+                  : "Signalé"
+              }}
             </div>
-        </form>
+          </div>
+        </div>
+      </div>
+    </div>
 
-        <table class="documents-table">
-            <thead>
-                <tr>
-                    <th>Patient</th>
-                    <th>Type de document</th>
-                    <th>Date</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr *ngFor="let doc of filteredDocuments">
-                    <td>
-                        <div class="patient-info">
-                            <div class="patient-avatar">{{ doc.patient_name?.substring(0, 2) || 'NA' }}</div>
-                            <div>
-                                <div>{{ doc.patient_name }}</div>
-                                <div style="font-size: 0.75rem; color: var(--gray-500);">ID: {{ doc.patient_id }}</div>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        <span class="document-type" [ngClass]="doc.type === 'ordonnance' ? 'prescription' : 'care'">
-                            {{ doc.type === 'ordonnance' ? 'Ordonnance' : 'Bulletin de soins' }}
-                        </span>
-                    </td>
-                    <td>{{ doc.date | date:'d MMMM yyyy':'':'fr' }}</td>
-                    <td>
-                        <span class="status" [ngClass]="doc.status">
-                            {{ doc.status === 'verified' ? 'Vérifié' : 
-                               doc.status === 'pending' ? 'En attente' : 'Signalé' }}
-                        </span>
-                    </td>
-                    <td class="actions-cell">
-                        <button class="btn-icon" (click)="viewDocument()">
-                            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                <circle cx="12" cy="12" r="3"></circle>
-                            </svg>
-                        </button>
-                        <button class="btn-icon" (click)="editDocument(doc.id, doc.type)">
-                            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                            </svg>
-                        </button>
+    <!-- Loading spinner -->
+    <div *ngIf="isLoadingPatient" class="loading-spinner">
+      <div class="spinner"></div>
+      <p>Chargement des données du patient...</p>
+    </div>
 
-                    </td>
-                </tr>
-                
-                <!-- No documents message -->
-                <tr *ngIf="filteredDocuments.length === 0">
-                    <td colspan="5" class="no-results">
-                        Aucun document ne correspond aux critères de recherche
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </main>
+    <div class="stats-cards">
+      <div class="stat-card">
+        <svg
+          class="stat-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <div class="stat-title">Total de documents</div>
+        <div class="stat-value">{{ totalDocuments }}</div>
+        <div class="stat-desc">
+          {{ newDocumentsThisWeek }} nouveaux cette semaine
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <svg
+          class="stat-icon prescription-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+          ></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <div class="stat-title">Ordonnances</div>
+        <div class="stat-value">{{ ordonnancesCount }}</div>
+        <div class="stat-desc">
+          {{ pendingOrdonnances }} en attente de vérification
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <svg
+          class="stat-icon care-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+        </svg>
+        <div class="stat-title">Bulletins de soins</div>
+        <div class="stat-value">{{ bulletinsCount }}</div>
+        <div class="stat-desc">
+          {{ flaggedBulletins }} signalés pour révision
+        </div>
+      </div>
+    </div>
+
+    <form [formGroup]="filterForm" class="filters">
+      <input
+        type="text"
+        class="search-box"
+        placeholder="Rechercher des documents..."
+        formControlName="searchTerm"
+      />
+
+      <div class="filter-group">
+        <span class="filter-label">Type:</span>
+        <select class="select" formControlName="type">
+          <option value="all">Tous les types</option>
+          <option value="prescription">Ordonnance</option>
+          <option value="care">Bulletin de soins</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">Statut:</span>
+        <select class="select" formControlName="status">
+          <option value="all">Tous les statuts</option>
+          <option value="verified">Vérifié</option>
+          <option value="pending">En attente</option>
+          <option value="flagged">Signalé</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">Date:</span>
+        <select class="select" formControlName="date">
+          <option value="all">Tout le temps</option>
+          <option value="today">Aujourd'hui</option>
+          <option value="this-week">Cette semaine</option>
+          <option value="this-month">Ce mois-ci</option>
+        </select>
+      </div>
+    </form>
+
+    <table class="documents-table">
+      <thead>
+        <tr>
+          <th>Patient</th>
+          <th>Type de document</th>
+          <th>Date</th>
+          <th>Statut</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let doc of filteredDocuments">
+          <td>
+
+            <div class="patient-info">
+              <div class="patient-avatar">
+                {{
+                  doc.patient_name ? (doc.patient_name | slice : 0 : 2) : "NA"
+                }}
+              </div>
+              <div>
+                <div>{{ doc.patient_name || "Patient sans nom" }}</div>
+                <div style="font-size: 0.75rem; color: var(--gray-500)">
+                  ID: {{ doc.patient_id || "N/A" }}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span
+              class="document-type"
+              [ngClass]="doc.type === 'ordonnance' ? 'prescription' : 'care'"
+            >
+              {{
+                doc.type === "ordonnance" ? "Ordonnance" : "Bulletin de soins"
+              }}
+            </span>
+          </td>
+          <td>{{ doc.date | date : "d MMMM yyyy" : "" : "fr" }}</td>
+          <td>
+            <span class="status" [ngClass]="doc.status">
+              {{
+                doc.status === "verified"
+                  ? "Vérifié"
+                  : doc.status === "pending"
+                  ? "En attente"
+                  : "Signalé"
+              }}
+            </span>
+          </td>
+          <td class="actions-cell">
+            <button
+              class="btn-icon"
+              (click)="viewDocument(doc.id, doc.patient_id)"
+            >
+              <svg
+                style="width: 16px; height: 16px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+            <button class="btn-icon" (click)="editDocument(doc.id, doc.type)">
+              <svg
+                style="width: 16px; height: 16px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+                ></path>
+                <path
+                  d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+                ></path>
+              </svg>
+            </button>
+          </td>
+        </tr>
+
+        <!-- No documents message -->
+        <tr *ngIf="filteredDocuments.length === 0">
+          <td colspan="5" class="no-results">
+            Aucun document ne correspond aux critères de recherche
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
 </div>

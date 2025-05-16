@@ -83,18 +83,17 @@ async def parse_document(file: UploadFile = File(...)):
 
     return {"header": {"documentType": form_key}, **parsed}
 
-@app.get("/patients/{first_name}/{last_name}", response_model=schemas.PatientWithDocs)
-def get_patient_by_name(
-    first_name: str,
-    last_name:  str,
-    db:         Session = Depends(get_db)
+@app.get("/patients/{patient_id}", response_model=schemas.PatientWithDocs)
+def get_patient_by_id(
+    patient_id: int,
+    db: Session = Depends(get_db)
 ):
     patient = (
         db.query(models.Patient)
-          .filter_by(first_name=first_name, last_name=last_name)
+          .filter(models.Patient.id == patient_id)
           .options(
-            joinedload(models.Patient.bulletins),
-            joinedload(models.Patient.prescriptions),
+              joinedload(models.Patient.bulletins),
+              joinedload(models.Patient.prescriptions),
           )
           .first()
     )
@@ -382,8 +381,8 @@ def update_bulletin(
 
 
 
-@app.on_event("startup")
-def reset_database_on_startup():
+#@app.on_event("startup")
+#def reset_database_on_startup():
     models.Base.metadata.drop_all(bind=engine)
     models.Base.metadata.create_all(bind=engine)
 

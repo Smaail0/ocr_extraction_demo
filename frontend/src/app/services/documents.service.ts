@@ -91,13 +91,32 @@ export class DocumentsService {
     );
   }
 
-  getPatientWithDocs(firstName: string, lastName: string): Observable<any> {
-  return this.http.get<any>(`${this.apiUrl}/patients/${firstName}/${lastName}`).pipe(
-    tap(res => console.log('Fetched patient:', res)),
-    catchError((error: HttpErrorResponse) => {
-      console.error('Error fetching patient:', error);
-      return throwError(() => error);
-    })
+getPatientWithDocs(patientId: number): Observable<any> {
+  return this.http.get<any>(`${this.apiUrl}/patients/${patientId}`).pipe(
+    map(response => {
+      // Handle different response formats
+      const patientData = response.data || response.patient || response;
+      
+      // Normalize the patient data structure
+      return {
+        id: patientData.id || patientId,
+        first_name: patientData.first_name || patientData.prenom || '',
+        last_name: patientData.last_name || patientData.nom || '',
+        patient_id: patientData.patient_id || patientId.toString(),
+        // Make sure documents is always an array
+        documents: Array.isArray(patientData.documents) ? 
+          patientData.documents : 
+          (patientData.ordonnances || []).concat(patientData.bulletins || [])
+      };
+    }),
+    // Return a fallback object if API fails
+    catchError(() => of({
+      id: patientId,
+      first_name: 'Patient',
+      last_name: `#${patientId}`,
+      patient_id: patientId.toString(),
+      documents: []
+    }))
   );
 }
 
