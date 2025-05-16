@@ -8,66 +8,36 @@ import numpy as np
 import pandas as pd
 from rapidfuzz import process, fuzz
 from pdf2image import convert_from_path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.core.credentials import AzureKeyCredential
+from datetime import datetime
 from typing import Optional, List, Dict
 from .signature_pipeline import get_doctor_name, get_signature_crop
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-load_dotenv()
 
-ENDPOINT = "https://iway.cognitiveservices.azure.com"
-KEY = "DszvIykXxKf5EbrKjS5c1GxRjaA0Fd2ak7ITBvUMmqIF5umt8dk6JQQJ99BEACi5YpzXJ3w3AAALACOGQM1J"
+load_dotenv(override=True)
+
+ENDPOINT = os.getenv("DOCUMENT_INTELLIGENCE_ENDPOINT")
+KEY = os.getenv("DOCUMENT_INTELLIGENCE_API_KEY")
     
 if not (ENDPOINT and KEY):
     raise SystemExit("Set DOCUMENT_INTELLIGENCE_ENDPOINT & DOCUMENT_INTELLIGENCE_API_KEY in .env")
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 amm_path = os.path.join(current_dir, "liste_amm.xls")
-med_ref = pd.read_excel(amm_path)
+med_ref = pd.read_excel(
+    amm_path,
+    usecols=["Nom", "Dosage", "Forme"],
+    dtype={"Nom": str, "Dosage": str, "Forme": str},  # force them to strings
+)
+
+choices = med_ref["Nom"].dropna().tolist()
+cleaned_choices = [ re.sub(r"\W+", "", c.lower()) for c in choices ]
 
 client = DocumentIntelligenceClient(ENDPOINT, AzureKeyCredential(KEY))
-model_id = "ordonnance"
-print("Listing models available on your Azure resource...")
-try:
-    # For new SDKs (azure-ai-documentintelligence)
-    models = client.list_models()
-    for model in models:
-        print("Model ID:", model.model_id)
-except AttributeError:
-    try:
-        # For older SDKs (azure-ai-formrecognizer)
-        models = client.list_custom_models()
-        for model in models:
-            print("Model ID:", model.model_id)
-    except Exception as e:
-        print("Could not list models:", e)
+model_id = os.getenv("ORDONNANCE_MODEL_ID")
 
-def list_available_models():
-    """Print all available models in the Azure Document Intelligence resource"""
-    try:
-        # For newer SDK versions
-        result = client.list_models()
-        print("Available models in your Azure resource:")
-        for model in result:
-            print(f"- {model.model_id} (Created: {model.created_on})")
-        return result
-    except AttributeError:
-        try:
-            # For older SDK versions
-            result = client.list_custom_models()
-            print("Available custom models in your Azure resource:")
-            for model in result:
-                print(f"- {model.model_id} (Created: {model.created_date_time})")
-            return result
-        except Exception as e:
-            print(f"Error listing models with alternate method: {e}")
-            return []
-    except Exception as e:
-        print(f"Error listing models: {e}")
-        return []
-
-available_models = list_available_models()
 def analyze_document(scan_path: Path, model_id: str, pages: list[str]):
     """
     Sends the raw PDF or image stream to Azure custom model.
@@ -80,12 +50,79 @@ def analyze_document(scan_path: Path, model_id: str, pages: list[str]):
         )
     return poller.result()
 
-def correct_medication_name(raw, med_ref_threshold=80):
-    match, score, idx = process.extractOne(raw, med_ref["Nom"], scorer=fuzz.ratio)
-    if score >= med_ref_threshold:
-        return med_ref.iloc[idx].to_dict(), score
-    return None, score
+def normalize_date(raw: str) -> Optional[str]:
+    if not raw:
+        return None
+    # 1) strip out “Le”, line-breaks, extra text
+    s = raw.replace("Le", "").replace("\n", " ").strip()
+    # 2) look for day, month, year in any of these separators
+    m = re.search(r"(\d{1,2})[\/\.\-\s]+(\d{1,2})[\/\.\-\s]+(\d{2,4})", s)
+    if not m:
+        return None
+    day, month, year = m.groups()
+    # 3) normalize two-digit years (assume 20xx)
+    if len(year) == 2:
+        year = "20" + year
+    # 4) zero-pad day/month and build ISO string
+    try:
+        dt = datetime(int(year), int(month), int(day))
+        return dt.date().isoformat()   # “2022-01-03”
+    except ValueError:
+        return None
 
+def split_and_correct(raw: str, med_ref: pd.DataFrame, threshold: int = 90):
+    # 1) split into plausible segments
+    segments = re.split(r"\d+\)\s*|\n+|[,;]\s*|/\s*(?=[A-Za-z])", raw)
+    segments = [s.strip(" .,'–-\n") for s in segments if re.search(r"[A-Za-z]", s)]
+    
+    results = []
+    seen = set()
+    
+    for seg in segments:
+        working = seg  # we'll strip out matched meds as we go
+        while True:
+            # normalize working text for matching
+            norm = re.sub(r"\W+", "", working.lower())
+
+            # full‐string match
+            match_clean, score, idx = process.extractOne(
+                norm, cleaned_choices, scorer=fuzz.token_set_ratio
+            )
+
+            official   = choices[idx]
+            clean_off  = re.sub(r"\W+", "", official.lower())
+            # also check a partial‐ratio
+            partial_sp = fuzz.partial_ratio(clean_off, norm)
+
+            # now *both* must clear your threshold:
+            if score < threshold or partial_sp < threshold:
+                break
+            
+            # avoid duplicates
+            if official in seen:
+                break
+            
+            # grab dosage & forme
+            row     = med_ref.iloc[idx]
+            raw_dos = row["Dosage"]
+            dosage  = "" if pd.isna(raw_dos) else str(raw_dos).strip()
+            raw_for = row["Forme"]
+            forme   = "" if pd.isna(raw_for) else str(raw_for).strip()
+            
+            produit = f"{official} {dosage}".strip()
+            results.append({
+                "raw":          seg,
+                "matched_name": official,
+                "score":        score,
+                "dosage":       dosage,
+                "forme":        forme,
+                "produit":      produit,
+            })
+            seen.add(official)
+            
+            working = re.sub(re.escape(official), "", working, flags=re.IGNORECASE).strip()
+        
+    return results
 
 def dump_results(result, output_txt: Path, min_conf: float = 0.1):
 
@@ -203,7 +240,7 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
             tmp_path = Path(tmp.name)
 
         # 2) call Azure
-        model_id = "ordonnance"
+        model_id = os.getenv("ORDONNANCE_MODEL_ID")
         print(f"Using model ID: {model_id}")
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
@@ -360,6 +397,7 @@ def has_signature_coordinates(result) -> bool:
     return bool(bounding_regions and len(bounding_regions) > 0)
 
 def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
+    import traceback
     tmp_path: Optional[Path] = None
     try:
         # 1) dump bytes to temp file
@@ -369,19 +407,21 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             tmp_path = Path(tmp.name)
 
         # 2) call Azure Document Intelligence
-        model_id = "ordonnance"
+        model_id = os.getenv("ORDONNANCE_MODEL_ID")
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
+        
+        med_field = f.get("medicaments") or f.get("medications")
+        if med_field:
+            logging.debug("Azure medicaments text: %r", med_field.get("valueString") or med_field.get("content"))
+        else:
+            logging.debug("No medicaments field; keys: %s", list(f.keys()))
 
-        # GUARD: ensure at least one table back
         raw_tables = result.tables
-        if len(raw_tables) < 1:
-            raise ValueError(f"Expected at least 1 table but found {len(raw_tables)}; not a valid prescription.")
-
-        logging.info("Processing document fields: %s", list(f.keys()))
-        logging.info("Tables found by column count: %s", [tbl.column_count for tbl in result.tables])
-
+        if not raw_tables:
+            logging.warning("No tables found (%d); will use fallbacks", len(raw_tables))
+            
         def txt(key: str) -> Optional[str]:
             fld = f.get(key)
             if not fld:
@@ -389,8 +429,8 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             return fld.get("valueString") or fld.get("content")
 
         # 3) parse all tables into (col_count, matrix)
-        tables: list[tuple[int, list[list[str]]]] = []
-        for tbl in result.tables:
+        tables = []
+        for tbl in raw_tables:
             mat = [[""] * tbl.column_count for _ in range(tbl.row_count)]
             for cell in tbl.cells:
                 mat[cell.row_index][cell.column_index] = cell.content.strip()
@@ -400,29 +440,36 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         meta_mat  = next((m for c, m in tables if c == 2), None)
 
         # 4) parse the 8-col items (and footer)
-        items: list[dict] = []
+        items = []
         total: Optional[str] = None
         if items_mat and len(items_mat) > 1:
             for row in items_mat[1:-1]:
                 cells = (row + [""] * 8)[:8]
                 items.append({
-                    "codePCT":      cells[0],
-                    "produit":      cells[1],
-                    "forme":        cells[2],
-                    "qte":          cells[3],
-                    "puv":          cells[4],
-                    "montantPercu": cells[5],
-                    "nio":          cells[6],
-                    "prLot":        cells[7],
+                    "codePCT":      cells[0].strip(),
+                    "produit":      cells[1].strip(),
+                    "forme":        cells[2].strip(),
+                    "qte":          cells[3].strip(),
+                    "puv":          cells[4].strip(),
+                    "montantPercu": cells[5].strip(),
+                    "nio":          cells[6].strip(),
+                    "prLot":        cells[7].strip(),
                 })
             footer = items_mat[-1]
             if footer and footer[0].lower().startswith("total"):
-                total = footer[0]
-
+                total = footer[0].strip()
+        
+        def is_all_blank(lst):
+            return bool(lst) and all(not it.get("produit","").strip() for it in lst)
+        
+        logging.debug("After table parse, items=%r", items)
+        if is_all_blank(items):
+            logging.debug("Table parse yielded only blanks; clearing items")
+            items = []
+                
         # 5) parse the 2-col metadata
         beneficiaryId = patientIdentity = prescriberCode = None
         prescriptionDate = regimen = dispensationDate = None
-
         if meta_mat:
             for key_cell, val_cell in meta_mat:
                 key = key_cell.strip().lower()
@@ -455,54 +502,55 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         formatted_id     = format_prescription_id(beneficiaryId)
         patientIdentity  = patientIdentity or txt("nom_prenom") or ""
         prescriberCode   = prescriberCode  or txt("code_apci")
-        prescriptionDate = prescriptionDate or txt("date")
-        dispensationDate = dispensationDate or txt("date_numero")
+        prescriptionDate = normalize_date(prescriptionDate) or txt("date")
+        dispensationDate = normalize_date(dispensationDate) or txt("date_numero")
         regimen          = regimen          or txt("regime")
 
         # 7) fallback items from `prescription_items` array or from 'medications' free-text field
         if not items and f.get("prescription_items"):
             arr = f["prescription_items"].get("valueArray", [])
-            for idx, row in enumerate(arr):
-                cells = [(c.get("valueString") or c.get("content") or "").strip()
-                        for c in row.get("valueArray", [])]
-                if idx == 0:
-                    continue
-                if cells and cells[0].lower().startswith("total"):
-                    total = cells[0]
-                    continue
-                a, b, c_, d = (cells + [""] * 4)[:4]
-                items.append({
-                    "codePCT": a,
-                    "produit": b,
-                    "forme":   c_,
-                    "qte":     d,
+            # only parse if there are actual rows
+            if len(arr) > 1:
+                for idx, row in enumerate(arr):
+                    cells = [(c.get("valueString") or c.get("content") or "").strip()
+                            for c in row.get("valueArray", [])]
+                    if idx == 0:
+                        continue
+                    if cells and cells[0].lower().startswith("total"):
+                        total = cells[0]
+                        continue
+                    a, b, c_, d = (cells + [""] * 4)[:4]
+                    items.append({
+                        "codePCT":      a,
+                        "produit":      b,
+                        "forme":        c_,
+                        "qte":          d,
                 })
-        elif not items and txt("medications"):
-            meds_text = txt("medications")
-            med_lines = re.split(r"[-,]", meds_text)
-            med_lines = [line.strip() for line in med_lines if line.strip()]
-            for line in med_lines:
-                # Fuzzy match for med name
-                corrected, score = correct_medication_name(line, med_ref)
-                name = corrected["name"] if corrected else line
+                    
+        if is_all_blank(items):
+            logging.debug("prescription_items yielded only blanks; clearing items")
+            items = []
 
-                # Extract the first number as dosage
-                dosage_match = re.search(r"\b(\d+(\.\d+)?)(?:\s?(mg|ml|g|mcg))?\b", line, re.IGNORECASE)
-                dosage = dosage_match.group(1) if dosage_match else ""
-
-                # Combine for produit
-                produit = f"{name} {dosage}".strip()
-
-                items.append({
-                    "codePCT": "NA",
-                    "produit": produit,
-                    "forme": "NA",
-                    "qte": "NA",
-                    "puv": "NA",
-                    "montantPercu": "NA",
-                    "nio": "NA",
-                    "prLot": "NA",
-                })
+        if not items:
+            meds_text = txt("medicaments") or ""
+            if meds_text.strip():
+                seen = set()
+                # — Phase 1: split & correct as before —
+                corrected = split_and_correct(meds_text, med_ref, threshold=60)
+                items = []
+                for e in corrected:
+                    # require that the matched_name strongly matches THIS segment
+                    if fuzz.partial_ratio(e["matched_name"].lower(), e["raw"].lower()) >= 85:
+                        items.append({
+                            "codePCT":      "",
+                            "produit":      e["produit"],
+                            "forme":        e["forme"],
+                            "qte":          "",
+                            "puv":          "",
+                            "montantPercu": "",
+                            "nio":          "",
+                            "prLot":        "",
+                        })
 
         # 8) fallback total from the raw field
         total = total or txt("total_ttc") or ""
@@ -535,13 +583,9 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
         pharmacyFiscalId = fisc_m.group(1).strip() if fisc_m else None
 
         # ─── 10) NEW FIELDS (doctor info, CNAM fields, etc.) ────────────
-        # Executor/exécuteur: standardize on `executor` or `executeur` everywhere
         executor          = txt("executeur") or txt("info_medecin") or ""
         pharmacistCnamRef = txt("ref_cnam") or txt("code_cnam") or ""
-        # Prescriber code fallback logic for code_cnam field
         code_cnam = prescriberCode or txt("code_cnam") or ""
-        # Doctor signature fields
-        signatureDocteurField = txt("signatureDocteurField") or ""
         nom_prenom_docteur    = txt("nom_prenom_docteur") or ""
 
         output = {
@@ -560,8 +604,6 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             "dispensationDate":  dispensationDate,
             "executor":          executor,           
             "ref_cnam":          pharmacistCnamRef,  
-            "code_cnam":         code_cnam,
-            "signatureDocteurField": signatureDocteurField,  
             "nom_prenom_docteur":   nom_prenom_docteur,
 
             "items":             items,
@@ -570,9 +612,8 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
 
         # ─── 12) signature crop & naming ────────────────────────────────
         try:
-            # Only attempt cropping if coordinates exist (pseudo-code, adjust as needed)
             if has_signature_coordinates(result):
-                doc_name = get_doctor_name(tmp_path)
+                doc_name = get_doctor_name(tmp_path, client, model_id)
                 sig_crop = get_signature_crop(tmp_path)
                 sig_dir = Path("signatures")
                 sig_dir.mkdir(exist_ok=True)
@@ -585,6 +626,15 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             logging.error(f"Signature cropping failed: {e}")
             output["signatureCropFile"] = None
 
+        return output
+
+    except Exception as e:
+        logging.error(f"Error in parse_prescription_ocr: {e}\n{traceback.format_exc()}")
+        return {
+            "error": str(e),
+            "items": [],
+            "detail": "parse_prescription_ocr failed"
+        }
     finally:
         if tmp_path and tmp_path.exists():
             tmp_path.unlink()

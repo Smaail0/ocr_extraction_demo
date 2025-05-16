@@ -24,10 +24,6 @@ DPI      = 300
 AKAZE_THRESHOLD = 0.20
 SSIM_THRESHOLD  = 0.50
 
-# ─── Azure Client ────────────────────────────────────────────────────────────
-if not (ENDPOINT and KEY and MODEL_ID):
-    print("❌ Set DOCUMENT_INTELLIGENCE_ENDPOINT, DOCUMENT_INTELLIGENCE_API_KEY & SIGNATURE_MODEL_ID in .env")
-    sys.exit(1)
 client = DocumentIntelligenceClient(ENDPOINT, AzureKeyCredential(KEY))
 
 
@@ -67,11 +63,13 @@ def get_doctor_name(
 def get_signature_crop(path: str) -> np.ndarray:
     from .prescription_cropper import crop_signature_from_page, load_grayscale_pages
     def fallback():
-        gray = load_grayscale_pages(path)[0]
+        gray = load_grayscale_pages(str(path))[0]
         return crop_signature_from_page(gray)
 
+    path_str = str(path)
+
     try:
-        with open(path,"rb") as f:
+        with open(path_str,"rb") as f:
             poller = client.begin_analyze_document(MODEL_ID, f)
         result = poller.result()
     except Exception:
@@ -83,15 +81,15 @@ def get_signature_crop(path: str) -> np.ndarray:
         return fallback()
 
     region = field.bounding_regions[0]
-    ext = os.path.splitext(path)[1].lower()
+    ext = os.path.splitext(str(path))[1].lower()
     if ext==".pdf":
-        pages = convert_from_path(path, dpi=DPI)
+        pages = convert_from_path(str(path), dpi=DPI)
         page = pages[region.page_number-1]
         img = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2GRAY)
         poly = region.polygon
         pts = [(int(poly[i]*DPI),int(poly[i+1]*DPI)) for i in range(0,len(poly),2)]
     else:
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE) or fallback()
+        img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE) or fallback()
         poly = region.polygon
         pts = [(int(poly[i]),int(poly[i+1])) for i in range(0,len(poly),2)]
 

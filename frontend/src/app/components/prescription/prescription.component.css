@@ -334,3 +334,27 @@ h3 {
     display: none;
   }
 }
+
+  .signature-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.signature-label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.signature-img {
+  
+  width: 600px;
+  height: 240px;
+
+  object-fit: contain;
+
+  border: 2px solid #0d6efd;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}

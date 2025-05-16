@@ -85,7 +85,7 @@ async def parse_document(file: UploadFile = File(...)):
         tmp.write(data)
         tmp_path = Path(tmp.name)
 
-    # 1) do your ORB‐based, page‐by‐page classification
+    # 1) classify
     form_key = classify_form(
         scan_path=tmp_path,
         presc_hdr_img=PRESC_HDR,
@@ -93,41 +93,35 @@ async def parse_document(file: UploadFile = File(...)):
     )
     tmp_path.unlink()
 
-    # 2) send to Azure
+    # 2) parse with the right function
     try:
         if form_key == "prescription":
             parsed = await parse_prescription_ocr(data, file.filename)
-        else:
+        else:  # form_key == "bulletin"
             parsed = await parse_bulletin_ocr(data, file.filename)
     except ValueError as err:
+        # parser said “this isn’t your form”
         raise HTTPException(status_code=400, detail=str(err))
 
-    # 3) SANITY CHECK: if Azure returned no meaningful rows, override to “unknown”
-    if form_key == "prescription":
-        # prescription must have at least one item
-        if not parsed.get("items"):
-            raise HTTPException(
-                status_code=400,
-                detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
-            )
-    else:
-        tables = (
-            parsed.get("consultationsDentaires", [])
-            + parsed.get("prothesesDentaires", [])
-            + parsed.get("consultationsVisites", [])
-            + parsed.get("actesMedicaux", [])
-            + parsed.get("actesParamed", [])
-            + parsed.get("biologie", [])
-            + parsed.get("hospitalisation", [])
-            + parsed.get("pharmacie", [])
+    # 3) SANITY CHECK only for bulletin
+    if form_key == "bulletin":
+        all_tables = (
+            parsed.get("consultationsDentaires", []) +
+            parsed.get("prothesesDentaires", []) +
+            parsed.get("consultationsVisites", []) +
+            parsed.get("actesMedicaux", []) +
+            parsed.get("actesParamed", []) +
+            parsed.get("biologie", []) +
+            parsed.get("hospitalisation", []) +
+            parsed.get("pharmacie", [])
         )
-        if not any(tables):
+        if not any(all_tables):
             raise HTTPException(
                 status_code=400,
                 detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
             )
 
-    # 4) if we get here, everything looks good
+    # 4) success
     return {"header": {"documentType": form_key}, **parsed}
 
 @app.get("/patients/{first_name}/{last_name}", response_model=schemas.PatientWithDocs)
@@ -179,14 +173,13 @@ def create_prescription(
     presc: schemas.PrescriptionCreate,
     db: Session = Depends(get_db)
 ):
-    if not presc.items:
-        raise HTTPException(400, "Prescription must have at least one item")
-
-    # split the "First Last" into two parts
-    try:
-        first, last = presc.patientIdentity.split(" ", 1)
-    except ValueError:
-        raise HTTPException(400, "patientIdentity must be 'First Last'")
+    identity = presc.patientIdentity.strip()
+    if identity and " " in identity:
+        first, last = identity.split(" ", 1)
+    elif identity:
+        first, last = identity, ""
+    else:
+        first, last = "", ""
 
     # 1) find or create the patient by name
     patient = get_or_create_patient_by_name(db, first, last)

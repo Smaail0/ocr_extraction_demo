@@ -1,39 +1,51 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, Extra
 
 class PrescriptionItem(BaseModel):
-    codePCT: str
-    produit: str
-    forme: str
-    qte: str
-    puv: str
-    montantPercu: str
-    nio: str
-    prLot: str
+    codePCT: str = ""
+    produit: str = ""
+    forme: str = ""
+    qte: str = ""
+    puv: str = ""
+    montantPercu: str = ""
+    nio: str = ""
+    prLot: str = ""
 
 class PrescriptionBase(BaseModel):
     pharmacyName: str
-    pharmacyAddress: Optional[str]
-    pharmacyContact: Optional[str]
-    pharmacyFiscalId: Optional[str]
+    pharmacyAddress: Optional[str] = ""
+    pharmacyContact: Optional[str] = ""
+    pharmacyFiscalId: Optional[str] = ""
 
-    beneficiaryId: Optional[str]
+    beneficiaryId: Optional[str] = ""
     patientIdentity: Optional[str] = ""
-    prescriberCode: Optional[str]
-    prescriptionDate: Optional[str]
-    regimen: Optional[str]
-    dispensationDate: Optional[str]
+    prescriberCode: Optional[str] = ""
+    prescriptionDate: Optional[str] = ""
+    regimen: Optional[str] = ""
+    dispensationDate: Optional[str] = ""
+ 
+    executor: Optional[str] = ""
+    pharmacistCnamRef: Optional[str] = Field("", alias="ref_cnam")
 
-    executor: Optional[str]
-    pharmacistCnamRef: Optional[str]
-
-    items: List[PrescriptionItem]
+    items: List[PrescriptionItem]  = Field(default_factory=list)
     total: Optional[str] = ""
     totalInWords: Optional[str] = ""
+    
+    signatureCropFile: Optional[str] = None
+    nom_prenom_docteur: Optional[str] = Field(None, alias="nom_prenom_docteur")
+    
+    class Config:
+        extra = Extra.ignore
+        validate_by_name = True
 
 class PrescriptionCreate(PrescriptionBase):
-    beneficiaryId: str
+    beneficiaryId: str = ""
+    
+    class Config(PrescriptionBase.Config):
+        validate_by_name = True
+        pass
+
 
 class Prescription(PrescriptionBase):
     id: int
@@ -41,7 +53,7 @@ class Prescription(PrescriptionBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class BulletinBase(BaseModel):
     prenom:            Optional[str] = None

@@ -96,7 +96,9 @@ class Prescription(Base):
 
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     patient    = relationship("Patient", back_populates="prescriptions")
-
+    
+    signatureCropFile = Column(String, nullable=True)
+    nom_prenom_docteur    = Column(String, nullable=True)
 
 class FileUpload(Base):
     __tablename__ = "file_uploads"
