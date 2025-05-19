@@ -236,32 +236,332 @@
   }
   
   .documents-table {
-    width: 100%;
-    border-collapse: collapse;
-    background-color: white;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  }
-  
-  .documents-table th, .documents-table td {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  margin-bottom: 2rem;
+}
+
+.documents-table th, 
+.documents-table td {
+  padding: 1rem;
+  text-align: left;
+}
+
+.documents-table th {
+  background-color: var(--gray-100);
+  color: var(--gray-700);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.documents-table tr:not(:last-child) {
+  border-bottom: 1px solid var(--gray-200);
+}
+
+/* Row hover effects */
+.documents-table tbody tr.courier-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.documents-table tbody tr.courier-row:hover {
+  background-color: var(--gray-50);
+}
+
+/* For the expanded state */
+.documents-table tbody tr.courier-row.expanded {
+  background-color: var(--gray-50);
+  border-bottom: none;
+}
+
+/* Actions cell styles */
+.actions-cell {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+
+/* Enhanced expanded row styles */
+.expanded-row {
+  display: none;
+  background-color: var(--gray-50);
+}
+
+.expanded-row.visible {
+  display: table-row;
+}
+
+.documents-subtable-container {
+  padding: 0;
+  background-color: var(--gray-50);
+  border-left: 3px solid var(--primary-color);
+}
+
+.documents-subtable-wrapper {
+  padding: 1.5rem 2rem;
+  background-color: white;
+  margin: 0.5rem 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.documents-subtable-wrapper h4 {
+  margin: 0 0 1.5rem 0;
+  color: var(--gray-700);
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.documents-subtable-wrapper h4::before {
+  content: "📄";
+  font-size: 1.2rem;
+}
+
+/* Documents grid layout instead of table */
+.documents-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.document-card {
+  background-color: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.document-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(67, 97, 238, 0.1);
+  transform: translateY(-2px);
+}
+
+.document-type-icon {
+  width: 45px;
+  height: 45px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.document-type-icon.ordonnance {
+  background-color: rgba(76, 201, 240, 0.1);
+  color: var(--success-color);
+}
+
+.document-type-icon.bulletin {
+  background-color: rgba(63, 55, 201, 0.1);
+  color: var(--secondary-color);
+}
+
+.document-info {
+  flex-grow: 1;
+  min-width: 0; /* Allow text truncation */
+}
+
+.document-title {
+  font-weight: 600;
+  color: var(--gray-800);
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.document-meta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.document-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--gray-600);
+}
+
+.document-meta-item svg {
+  width: 14px;
+  height: 14px;
+}
+
+.document-size {
+  font-weight: 500;
+}
+
+.document-date {
+  color: var(--gray-500);
+}
+
+.document-status {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.document-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.document-actions .btn-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid var(--gray-300);
+  background-color: white;
+  color: var(--gray-600);
+  transition: all 0.2s ease;
+}
+
+.document-actions .btn-icon:hover {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+/* Empty state */
+.no-documents {
+  text-align: center;
+  padding: 2rem;
+  color: var(--gray-500);
+  background-color: var(--gray-100);
+  border-radius: 8px;
+  border: 2px dashed var(--gray-300);
+}
+
+.no-documents-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .documents-subtable-wrapper {
+    margin: 0.5rem 1rem;
     padding: 1rem;
-    text-align: left;
   }
   
-  .documents-table th {
-    background-color: var(--gray-100);
-    color: var(--gray-700);
-    font-weight: 600;
+  .document-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
   }
   
-  .documents-table tr:not(:last-child) {
-    border-bottom: 1px solid var(--gray-200);
+  .document-meta {
+    justify-content: space-between;
   }
   
-  .documents-table tbody tr:hover {
-    background-color: var(--gray-50);
+  .document-actions {
+    justify-content: center;
+    border-top: 1px solid var(--gray-200);
+    padding-top: 0.75rem;
+    margin-top: 0.5rem;
   }
+}
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--gray-600);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-icon:hover {
+  background-color: var(--gray-200);
+  color: var(--gray-800);
+}
+
+.expand-toggle {
+  margin-left: 0.5rem;
+}
+
+/* Expanded row styles */
+.expanded-row {
+  display: none;
+}
+
+.expanded-row.visible {
+  display: table-row;
+}
+
+.documents-subtable-container {
+  padding: 0;
+  background-color: var(--gray-50);
+}
+
+.documents-subtable-wrapper {
+  padding: 1rem 2rem;
+}
+
+.documents-subtable-wrapper h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: var(--gray-700);
+}
+
+/* Subtable styles */
+.documents-subtable {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.documents-subtable th,
+.documents-subtable td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+
+.documents-subtable th {
+  background-color: var(--gray-100);
+  color: var(--gray-700);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.documents-subtable tr:not(:last-child) {
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.documents-subtable tbody tr:hover {
+  background-color: var(--gray-50);
+}
+
+/* No results message */
+.no-results {
+  text-align: center;
+  color: var(--gray-500);
+  padding: 2rem 0;
+}
   
   .patient-info {
     display: flex;
@@ -328,6 +628,11 @@
     background-color: rgba(245, 101, 101, 0.1);
     color: #e53e3e;
   }
+  .status.missed {
+    background-color: rgba(245, 101, 101, 0.1);
+    color: #e53e3e;
+  }
+  
   
   .actions-cell {
     display: flex;

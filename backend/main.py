@@ -1,21 +1,31 @@
-# main.py
 from datetime import datetime
 import os, re, shutil
 import traceback
-from typing import List
-from fastapi import Body
+from typing import List, Optional
+from fastapi import Body, Form
 import tempfile
 from pathlib import Path
 import cv2
 from fastapi import FastAPI, File, HTTPException, Depends, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session, joinedload
-from .schemas import PatientWithDocs
+
 from . import models, schemas
 from .database import engine, SessionLocal
 from .services.azure import classify_form_on_bytes, parse_bulletin_ocr, parse_prescription_ocr
 from azure_model.pipeline import classify_form
+
+
+from fastapi import FastAPI, File, Form, UploadFile, Depends, HTTPException
+from sqlalchemy.orm import Session
+from datetime import datetime
+import os, re, shutil
+
+from . import models, schemas
+from .database import engine, SessionLocal
+
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -37,7 +47,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 def get_db():
     db = SessionLocal()
     try:
@@ -45,17 +54,7 @@ def get_db():
     finally:
         db.close()
 
-def get_or_create_patient_by_name(db: Session, first: str, last: str):
-    patient = db.query(models.Patient).filter_by(first_name=first, last_name=last).first()
-    if not patient:
-        patient = models.Patient(first_name=first, last_name=last)
-        db.add(patient)
-        db.commit()
-        db.refresh(patient)
-    return patient
-
-
-@app.post("/documents/parse")
+@app.post("/api/documents/parse")
 async def parse_document(file: UploadFile = File(...)):
     data = await file.read()
     suffix = Path(file.filename).suffix or ".pdf"
@@ -75,7 +74,7 @@ async def parse_document(file: UploadFile = File(...)):
     try:
         if form_key == "prescription":
             parsed = await parse_prescription_ocr(data, file.filename)
-        else :
+        else:
             parsed = await parse_bulletin_ocr(data, file.filename)
 
     except ValueError as err:
@@ -83,52 +82,112 @@ async def parse_document(file: UploadFile = File(...)):
 
     return {"header": {"documentType": form_key}, **parsed}
 
-@app.get("/patients/{patient_id}", response_model=schemas.PatientWithDocs)
-def get_patient_by_id(
-    patient_id: int,
-    db: Session = Depends(get_db)
+
+UPLOAD_DIR = "files"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+
+
+models.Base.metadata.create_all(bind=engine)
+UPLOAD_DIR = "files"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+
+def detect_file_type_from_filename(filename: str) -> str:
+    filename_upper = filename.upper()
+    if filename_upper.startswith("BULLETIN"):
+        return "bulletin"
+    elif filename_upper.startswith("ORDONNANCE"):
+        return "ordonnance"
+    else:
+        return "unknown"
+
+
+
+@app.post(
+    "/api/courrier/upload",
+    response_model=schemas.Courier,
+    summary="Créer un Courier et y attacher 1+ fichiers"
+)
+async def upload_courrier(
+    mat_fiscale: str              = Form(...),
+    nom_complet_adherent: str     = Form(...),
+    nom_complet_beneficiaire: str = Form(...),
+    files: List[UploadFile]       = File(...),
+    db: Session                   = Depends(get_db)
 ):
-    patient = (
-        db.query(models.Patient)
-          .filter(models.Patient.id == patient_id)
-          .options(
-              joinedload(models.Patient.bulletins),
-              joinedload(models.Patient.prescriptions),
-          )
-          .first()
+
+    db_courier = models.Courier(
+        mat_fiscale=mat_fiscale,
+        nom_complet_adherent=nom_complet_adherent,
+        nom_complet_beneficiaire=nom_complet_beneficiaire,
+        created_at=datetime.utcnow()
     )
-    if not patient:
-        raise HTTPException(404, "Patient not found")
-    return patient
+    db.add(db_courier)
+    db.commit()
+    db.refresh(db_courier)
 
 
-@app.post("/bulletin/", response_model=schemas.Bulletin)
-def create_bulletin(bulletin: schemas.BulletinCreate, db: Session = Depends(get_db)):
+    for upload in files:
+        # Générer un nom unique pour le disque
+        ts        = datetime.utcnow().isoformat()
+        safe_ts   = re.sub(r"[:.]", "-", ts)
+        stored    = f"{safe_ts}_{upload.filename}"
+        full_path = os.path.join(UPLOAD_DIR, stored)
+
+        with open(full_path, "wb") as out_f:
+            shutil.copyfileobj(upload.file, out_f)
+
+        file_type = detect_file_type_from_filename(upload.filename)
+
+        db_file = models.FileUpload(
+            filename      = stored,
+            original_name = upload.filename,
+            path          = full_path,
+            type          = file_type,       
+            courier_id    = db_courier.id
+
+        )
+        db.add(db_file)
+
+    db.commit()
+    db.refresh(db_courier)
+
+    return db_courier
+
+@app.post("/api/bulletin/", response_model=schemas.Bulletin)
+def create_bulletin(bulletin: schemas.BulletinCreate, file_id: Optional[int] = None, db: Session = Depends(get_db)):
     print(f"Received bulletin data: {bulletin}")
 
     try:
-        # More robust name handling
-        name_parts = bulletin.patientIdentity.strip().split(" ", 1)
-        if len(name_parts) < 2:
-            first = name_parts[0]
-            last = ""  # You could also raise an error here
-        else:
-            first, last = name_parts
-
-        # Find or create the patient
-        patient = get_or_create_patient_by_name(db, first, last)
-
-        # Exclude patientIdentity before building SQLAlchemy object
-        data = bulletin.dict(exclude={"patientIdentity"})
-
+        # Create new bulletin
         db_bulletin = models.Bulletin(
-            **data,
-            patient_id=patient.id
+            **bulletin.dict(exclude={"identifiantUnique"}),
+            identifiantUnique=bulletin.identifiantUnique
         )
 
         db.add(db_bulletin)
         db.commit()
         db.refresh(db_bulletin)
+        
+        # Associate with file if file_id is provided
+        if file_id:
+            file = db.query(models.FileUpload).filter(models.FileUpload.id == file_id).first()
+            if file:
+                file.bulletin_id = db_bulletin.id
+                db.commit()
+        
         return db_bulletin
 
     except Exception as e:
@@ -137,10 +196,10 @@ def create_bulletin(bulletin: schemas.BulletinCreate, db: Session = Depends(get_
         raise HTTPException(500, f"Failed to save bulletin: {str(e)}")
 
 
-# ── Create Prescription ──
-@app.post("/prescription/", response_model=schemas.Prescription)
+@app.post("/api/prescription/", response_model=schemas.Prescription)
 def create_prescription(
     presc: schemas.PrescriptionCreate,
+    file_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     print(f"Received prescription data: {presc}")
@@ -148,28 +207,21 @@ def create_prescription(
         if not presc.items:
             raise HTTPException(400, "Prescription must have at least one item")
 
-        # More robust name handling
-        name_parts = presc.patientIdentity.strip().split(" ", 1)
-        if len(name_parts) < 2:
-            first = name_parts[0]
-            last = ""  # Or set a default
-        else:
-            first, last = name_parts
-
-        # Find or create the patient by name
-        patient = get_or_create_patient_by_name(db, first, last)
-
-        # Create the prescription row
-        data = presc.dict(exclude={"beneficiaryId", "patientIdentity"})  # Exclude fields not in DB model
-        db_presc = models.Prescription(
-        **data,
-        beneficiaryId=presc.beneficiaryId,
-        patientIdentity=presc.patientIdentity,  # Add this line
-        patient_id=patient.id
-        )
+        # Create new prescription
+        data = presc.dict()
+        db_presc = models.Prescription(**data)
+        
         db.add(db_presc)
         db.commit()
         db.refresh(db_presc)
+        
+        # Associate with file if file_id is provided
+        if file_id:
+            file = db.query(models.FileUpload).filter(models.FileUpload.id == file_id).first()
+            if file:
+                file.prescription_id = db_presc.id
+                db.commit()
+        
         return db_presc
     
     except Exception as e:
@@ -178,104 +230,49 @@ def create_prescription(
         print(f"Error creating prescription: {str(e)}")
         raise HTTPException(500, f"Failed to save prescription: {str(e)}")
 
-UPLOAD_DIR = "bulletins"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@app.post("/bulletin/upload", response_model=schemas.UploadResponse)
+BULLETIN_UPLOAD_DIR = "bulletins"
+os.makedirs(BULLETIN_UPLOAD_DIR, exist_ok=True)
 
-async def upload_bulletins(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
-    uploaded = []
+@app.post("/api/documents/associate")
+def associate_file_with_document(
+    association: schemas.FileDocumentAssociation,
+    db: Session = Depends(get_db)
+):
+    try:
+        file = db.query(models.FileUpload).filter(models.FileUpload.id == association.file_id).first()
+        if not file:
+            raise HTTPException(404, "File not found")
 
-    for file in files:
-        try:
-            raw_timestamp = datetime.utcnow().isoformat()
-            safe_timestamp = re.sub(r"[:.]", "-", raw_timestamp)
-
-            filename = f"{safe_timestamp}_{file.filename}"
-            file_path = os.path.join(UPLOAD_DIR, filename)
-
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-
-                db_file = models.FileUpload(
-                    filename=filename,
-                    original_name=file.filename,
-                    path=file_path,
-                    type="bulletin",  # Confirm this is being set
-                    uploaded_at=datetime.utcnow()
-            )
-            db.add(db_file)
-            db.commit()
-            db.refresh(db_file)
-
-            uploaded.append({
-                "id": db_file.id, 
-                "filename": filename, 
-                "original_name": file.filename,
-                "type": "bulletin"
-            })
-
-        except Exception as e:
-            print(f"Error uploading {file.filename}: {e}")
-            traceback.print_exc()
-
-    return {
-        "message": f"{len(uploaded)} bulletin(s) uploaded successfully",
-        "uploaded_files": uploaded
-    }
-
-
-ORDONNANCE_UPLOAD_DIR = "ordonnances"
-os.makedirs(ORDONNANCE_UPLOAD_DIR, exist_ok=True)
-
-@app.post("/ordonnance/upload", response_model=schemas.UploadResponse)
-async def upload_ordonnances(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
-    uploaded = []
-
-    for file in files:
-        try:
-            raw_timestamp = datetime.utcnow().isoformat()
-            safe_timestamp = re.sub(r"[:.]", "-", raw_timestamp)
-
-            filename = f"{safe_timestamp}_{file.filename}"
-            file_path = os.path.join(ORDONNANCE_UPLOAD_DIR, filename)
-
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-
-            # Save file info to database
-            db_file = models.FileUpload(
-                filename=filename,
-                original_name=file.filename,
-                path=file_path,
-                type="ordonnance",  
-                
-                uploaded_at=datetime.utcnow()
-            )
-            db.add(db_file)
-            db.commit()
-            db.refresh(db_file)
-
-            uploaded.append({
-                "id": db_file.id, 
-                "filename": filename, 
-                "original_name": file.filename,
-                "type": "ordonnance"
-                
-            })
-
-        except Exception as e:
-            print(f"Error uploading {file.filename}: {e}")
-            traceback.print_exc()
-
+        if association.document_type == "bulletin":
+            file.bulletin_id = association.document_id
+            file.prescription_id = None
+        elif association.document_type == "prescription" or association.document_type == "ordonnance":
+            file.prescription_id = association.document_id
+            file.bulletin_id = None
+        else:
+            raise HTTPException(400, "Invalid document type")
+            
+        db.commit()
+        db.refresh(file)
+        
+        return {
+            "message": "Association successful",
+            "file": {
+                "id": file.id,
+                "filename": file.filename,
+                "type": file.type,
+                "bulletin_id": file.bulletin_id,
+                "prescription_id": file.prescription_id
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Error associating file with document: {str(e)}")
+        raise HTTPException(500, f"Failed to associate file: {str(e)}")
     
-    return {
-        "message": f"{len(uploaded)} ordonnance(s) uploaded successfully",
-        "uploaded_files": uploaded,
-    }
-
-
-@app.get("/bulletin/uploaded/latest")
+@app.get("/api/bulletin/uploaded/latest")
 async def get_latest_bulletin(db: Session = Depends(get_db)):
     try:
         latest_bulletin = (
@@ -292,7 +289,8 @@ async def get_latest_bulletin(db: Session = Depends(get_db)):
                 "original_name": latest_bulletin.original_name,
                 "uploaded_at": latest_bulletin.uploaded_at,
                 "exists": True,
-                "type": latest_bulletin.type
+                "type": latest_bulletin.type,
+                "bulletin_id": latest_bulletin.bulletin_id
             }
         else:
             return {"exists": False, "message": "No bulletin found."}
@@ -302,34 +300,35 @@ async def get_latest_bulletin(db: Session = Depends(get_db)):
         traceback.print_exc()
         return {"exists": False, "message": "An error occurred."}
     
-@app.get("/ordonnance/uploaded/latest")
-async def get_latest_bulletin(db: Session = Depends(get_db)):
+@app.get("/api/ordonnance/uploaded/latest")
+async def get_latest_ordonnance(db: Session = Depends(get_db)):
     try:
-        latest_bulletin = (
+        latest_ordonnance = (
             db.query(models.FileUpload)
             .filter(models.FileUpload.type == "ordonnance")
             .order_by(desc(models.FileUpload.uploaded_at))
             .first()
         )
         
-        if latest_bulletin:
+        if latest_ordonnance:
             return {
-                "id": latest_bulletin.id,
-                "filename": latest_bulletin.filename,
-                "original_name": latest_bulletin.original_name,
-                "uploaded_at": latest_bulletin.uploaded_at,
+                "id": latest_ordonnance.id,
+                "filename": latest_ordonnance.filename,
+                "original_name": latest_ordonnance.original_name,
+                "uploaded_at": latest_ordonnance.uploaded_at,
                 "exists": True,
-                "type": latest_bulletin.type
+                "type": latest_ordonnance.type,
+                "prescription_id": latest_ordonnance.prescription_id
             }
         else:
-            return {"exists": False, "message": "No bulletin found."}
+            return {"exists": False, "message": "No ordonnance found."}
     
     except Exception as e:
-        print("Error in get_latest_bulletin:", e)
+        print("Error in get_latest_ordonnance:", e)
         traceback.print_exc()
         return {"exists": False, "message": "An error occurred."}
 
-@app.get("/bulletin/uploaded/all")
+@app.get("/api/bulletin/uploaded/all")
 async def get_all_bulletins(db: Session = Depends(get_db)):
     files = db.query(models.FileUpload).order_by(desc(models.FileUpload.uploaded_at)).all()
     bulletins = [
@@ -344,8 +343,10 @@ async def get_all_bulletins(db: Session = Depends(get_db)):
     ]
     return bulletins
 
-@app.get("/ordonnance/uploaded/all")
-async def get_all_bulletins(db: Session = Depends(get_db)):
+
+
+@app.get("/api/ordonnance/uploaded/all")
+async def get_all_ordonnances(db: Session = Depends(get_db)):
     files = db.query(models.FileUpload).order_by(desc(models.FileUpload.uploaded_at)).all()
     ordonnances = [
         {
@@ -359,8 +360,47 @@ async def get_all_bulletins(db: Session = Depends(get_db)):
     ]
     return ordonnances
 
+@app.get("/api/courrier/uploaded/all", response_model=List[schemas.Courier])
+async def get_all_courriers(db: Session = Depends(get_db)):
 
-@app.put("/bulletin/{bulletin_id}", response_model=schemas.Bulletin)
+    courriers = (
+        db.query(models.Courier)
+          .options(joinedload(models.Courier.files))
+          .all()
+    )
+    return courriers
+@app.get("/api/courrier/uploaded/latest", response_model=List[schemas.Courier])
+async def get_all_courriers(db: Session = Depends(get_db)):
+
+    courriers = (
+        db.query(models.Courier)
+          .options(joinedload(models.Courier.files))
+          .order_by(models.Courier.created_at.desc())
+          .all()
+    )
+    return courriers
+@app.get("/api/courrier/uploaded/all", response_model=schemas.Courier)
+async def get_latest_courrier(db: Session = Depends(get_db)):
+    """
+    Return the single most recently created Courier, with its files.
+    """
+    try:
+        latest = (
+            db.query(models.Courier)
+              .options(joinedload(models.Courier.files))
+              .order_by(models.Courier.created_at.desc())
+              .first()
+        )
+        if not latest:
+            raise HTTPException(404, detail="No courier found")
+        return latest
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, detail="Failed to fetch latest courier")
+
+@app.put("/api/bulletin/{bulletin_id}", response_model=schemas.Bulletin)
 def update_bulletin(
     bulletin_id: int,
     bulletin: schemas.BulletinCreate = Body(...),
@@ -370,7 +410,6 @@ def update_bulletin(
     if not db_b:
         raise HTTPException(404, "Bulletin not found")
 
-    # Pydantic v2 → use model_dump()
     for key, val in bulletin.model_dump().items():
         setattr(db_b, key, val)
 
@@ -378,7 +417,46 @@ def update_bulletin(
     db.refresh(db_b)
     return db_b
 
-
+@app.get("/api/files/{file_id}")
+async def get_file(file_id: int, db: Session = Depends(get_db)):
+    """
+    Serve a file by its ID. Returns the actual file content.
+    """
+    try:
+        # Get the file record from database
+        db_file = db.query(models.FileUpload).filter(models.FileUpload.id == file_id).first()
+        
+        if not db_file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Check if the file exists on disk
+        if not os.path.exists(db_file.path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        
+        # Determine the media type based on file extension
+        file_extension = os.path.splitext(db_file.original_name)[1].lower()
+        media_type = "application/pdf"  # Default to PDF
+        
+        if file_extension == ".pdf":
+            media_type = "application/pdf"
+        elif file_extension in [".jpg", ".jpeg"]:
+            media_type = "image/jpeg"
+        elif file_extension == ".png":
+            media_type = "image/png"
+        
+        # Return the file
+        return FileResponse(
+            path=db_file.path,
+            media_type=media_type,
+            filename=db_file.original_name,
+            headers={"Content-Disposition": f"inline; filename=\"{db_file.original_name}\""}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error serving file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error serving file")
 
 
 #@app.on_event("startup")

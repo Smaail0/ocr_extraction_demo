@@ -20,7 +20,6 @@ class PrescriptionBase(BaseModel):
 
     beneficiaryId: Optional[str]
 
-
     prescriberCode: Optional[str]
     prescriptionDate: Optional[str]
     regimen: Optional[str]
@@ -35,7 +34,7 @@ class PrescriptionBase(BaseModel):
 
 class PrescriptionCreate(PrescriptionBase):
     beneficiaryId: str
-    patientIdentity: str
+
 
 class Prescription(PrescriptionBase):
     id: int
@@ -43,7 +42,7 @@ class Prescription(PrescriptionBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class BulletinBase(BaseModel):
     prenom:            Optional[str] = None
@@ -63,9 +62,6 @@ class BulletinBase(BaseModel):
     cnss:              bool = False
     cnrps:             bool = False
     convbi:            bool = False
-    patientType:       Optional[str] = None
-
-
 
     consultationsDentaires: List[Dict[str,str]] = Field(default_factory=list, alias="consultationsDentaires")
     prothesesDentaires:     List[Dict[str,str]] = Field(default_factory=list, alias="prothesesDentaires")
@@ -87,12 +83,38 @@ class BulletinBase(BaseModel):
     class Config:
         validate_by_name = True
         from_attributes = True
-        
+    
 
 class BulletinCreate(BulletinBase):
     identifiantUnique: str 
-    patientIdentity: str
 
+class UploadedFileInfo(BaseModel):
+    id: int
+    filename: str
+    original_name: str
+    path: str
+    type: str
+    uploaded_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class CourierBase(BaseModel):
+    mat_fiscale: str
+    nom_complet_adherent: str
+    nom_complet_beneficiaire: str
+
+class CourierCreate(CourierBase):
+
+    pass
+
+class Courier(CourierBase):
+    id: int
+    created_at: datetime
+    files: List[UploadedFileInfo]
+
+    class Config:
+        orm_mode = True
 class Bulletin(BulletinBase):
     id: int
     created_at: datetime
@@ -101,36 +123,15 @@ class Bulletin(BulletinBase):
     class Config:
         from_attributes = True
 
-# ── FileUpload / UploadResponse ──
-class UploadedFileInfo(BaseModel):
-    id: int
-    filename: str
-    original_name: str
-    type: str
+
 
 class UploadResponse(BaseModel):
     message: str
     uploaded_files: List[UploadedFileInfo]
 
-# ── Patient & relationships ──
-class PatientBase(BaseModel):
-    first_name: str
-    last_name: str
-
-class PatientCreate(PatientBase):
-    pass
-
-class Patient(PatientBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class BulletinInDB(Bulletin):
     id: int
-    patient_id: int
     created_at: datetime
     updated_at: datetime
 
@@ -139,14 +140,26 @@ class BulletinInDB(Bulletin):
 
 class PrescriptionInDB(Prescription):
     id: int
-    patient_id: int
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
 
-class PatientWithDocs(Patient):
-    bulletins: List[BulletinInDB]       = []
-    prescriptions: List[PrescriptionInDB] = []
-    
+class FileUploadBase(BaseModel):
+    filename: str
+    file_path: str
+
+class FileUploadCreate(FileUploadBase):
+    pass
+
+class FileUpload(FileUploadBase):
+    id: int
+
+    class Config:
+        orm_mode = True
+
+class FileDocumentAssociation(BaseModel):
+    file_id: int
+    document_id: int
+    document_type: str  # "bulletin" or "prescription" or "ordonnance"

@@ -1,25 +1,8 @@
-#Models
 from datetime import datetime
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import Base
 from sqlalchemy.dialects.postgresql import JSON
-
-class Patient(Base):
-    __tablename__ = "patients"
-    __table_args__ = (
-      UniqueConstraint("first_name", "last_name", name="uq_patient_name"),
-    )
-    id          = Column(Integer, primary_key=True, index=True)
-    first_name  = Column(String, nullable=False, index=True)
-    last_name   = Column(String, nullable=False, index=True)
-    created_at  = Column(DateTime, default=datetime.utcnow)
-    updated_at  = Column(DateTime, default=datetime.utcnow,
-    onupdate    = datetime.utcnow)
-
-    bulletins     = relationship("Bulletin",    back_populates="patient")
-    prescriptions = relationship("Prescription", back_populates="patient")
-
 
 class Bulletin(Base):
     __tablename__ = "bulletins"
@@ -63,9 +46,8 @@ class Bulletin(Base):
 
     codeApci       = Column("codeApci",       String, nullable=True)
     dateAccouchement = Column("dateAccouchement", String, nullable=True)
-
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    patient    = relationship("Patient", back_populates="bulletins")
+    
+    files = relationship("FileUpload", back_populates="bulletin")
 
 
 class Prescription(Base):
@@ -78,7 +60,6 @@ class Prescription(Base):
     pharmacyFiscalId   = Column(String,  nullable=True)
 
     beneficiaryId      = Column(String,  nullable=False)
-    patientIdentity    = Column(String,  nullable=False)
     prescriberCode     = Column(String,  nullable=True)
     prescriptionDate   = Column(String,  nullable=True)
     regimen            = Column(String,  nullable=True)
@@ -93,17 +74,38 @@ class Prescription(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    file_id = Column(Integer, ForeignKey('file_uploads.id'))
+    
+    files = relationship("FileUpload", back_populates="prescriptions")
 
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    patient    = relationship("Patient", back_populates="prescriptions")
+class Courier(Base):
+    __tablename__ = "couriers"
 
+    id = Column(Integer, primary_key=True, index=True)
+    mat_fiscale = Column(String)
+    nom_complet_adherent = Column(String)
+    nom_complet_beneficiaire = Column(String)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    files = relationship("FileUpload", back_populates="courier")
 
 class FileUpload(Base):
     __tablename__ = "file_uploads"
-
     id            = Column(Integer, primary_key=True, index=True)
     filename      = Column(String,  nullable=False)
     original_name = Column(String,  nullable=False)
     path          = Column(String,  nullable=False)
+    type          = Column(String,  nullable=False)   # bulletin or ordonnance
     uploaded_at   = Column(DateTime, default=datetime.utcnow)
-    type          = Column(String)
+
+    bulletin_id = Column(Integer, ForeignKey('bulletins.id'))
+    bulletin = relationship("Bulletin", back_populates="files")
+    
+    prescriptions = relationship("Prescription", back_populates="files")
+
+    
+    courier_id = Column(Integer, ForeignKey("couriers.id"))
+    courier = relationship("Courier", back_populates="files")
+
