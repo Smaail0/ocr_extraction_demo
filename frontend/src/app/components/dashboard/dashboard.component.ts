@@ -5,9 +5,11 @@ import { Router } from '@angular/router';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { debounceTime, catchError } from 'rxjs/operators';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+
 import { Observable, of } from 'rxjs';
 
 import { UploadDocComponent } from '../upload-doc/upload-doc.component';
+import { ConfirmDialogComponent } from '../../confirm-dialog/confirm-dialog.component';
 
 interface Document {
   id: number;
@@ -44,7 +46,7 @@ interface Courier {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, MatDialogModule],
+  imports: [CommonModule, ReactiveFormsModule, MatDialogModule, ConfirmDialogComponent],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.css'],
 })
@@ -419,22 +421,41 @@ export class DashboardComponent implements OnInit {
     this.router.navigate([`/couriers/${courierId}/edit`]);
   }
 
-viewDocumentDetails(documentId: number, event?: Event) {
+viewPdfDocument(documentId: number, event?: Event) {
   if (event) {
     event.stopPropagation();
   }
-  
-  // Construct the PDF URL using your new endpoint
+
   const pdfUrl = `http://localhost:8000/api/files/${documentId}`;
-  
-  // Open PDF in new tab
   window.open(pdfUrl, '_blank');
 }
 
-// Alternative method if you want to handle errors gracefully
+deleteDocument(documentId: number, event?: Event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      width: '500px',
+   
+      data: {
+        title: 'Confirmation de suppression',
+        message: 'Êtes-vous sûr de vouloir supprimer ce document ?'
+      }
+    });
 
-
-  deleteDocument(documentId: number, event?: Event) {
-  console.log('Deleting document:', documentId);
+    dialogRef.afterClosed().subscribe(result => {
+      if (result === true) {
+        this.documentsService.deleteFile(documentId).subscribe({
+          next: () => {
+            console.log('Document deleted successfully');
+            this.loadAllDocuments();
+          },
+          error: (error) => {
+            console.error('Error deleting document:', error);
+          }
+        });
+      }
+    });
   }
 }

@@ -213,6 +213,16 @@ export class DocumentsService {
       catchError(this.handleError('Error deleting ordonnance'))
     );
   }
+
+  deleteFile(fileId: number): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/files/${fileId}`).pipe(
+      tap(response => console.log('File deleted:', response)),
+      catchError((error: HttpErrorResponse) => {
+        console.error('Error deleting file:', error);
+        return throwError(() => error);
+      })
+    );
+  }
   
   private handleError(message: string) {
     return (error: HttpErrorResponse) => {
