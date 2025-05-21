@@ -6,7 +6,7 @@ import { ExtractedTabsComponent } from './extracted-tabs.component';
 import { UploadDocComponent }     from '../upload-doc/upload-doc.component';
 import { PrescriptionComponent }  from '../prescription/prescription.component';
 import { BulletinComponent }      from '../bulletin/bulletin.component';
-import { StepperComponent }       from '../stepper/stepper.component';
+
 import { DocumentsService } from '../../services/documents.service';
 
 @Component({
@@ -17,7 +17,6 @@ import { DocumentsService } from '../../services/documents.service';
     ExtractedTabsComponent,
     UploadDocComponent,
     PrescriptionComponent,
-    StepperComponent,
     BulletinComponent
   ],
   templateUrl: './extracted-container.component.html',

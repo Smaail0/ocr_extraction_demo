@@ -226,6 +226,78 @@ export class DocumentsService {
       })
     );
   }
+
+
+  uploadFilesToCourier(formData: FormData, courierId: number): Observable<any> {
+  return this.http.post<any>(`${this.apiUrl}/couriers/${courierId}/files`, formData)
+    .pipe(
+      tap(res => console.log('Files uploaded to courier:', res)),
+      catchError((error: HttpErrorResponse) => {  
+        console.error('Error uploading files to courier:', error);
+        return throwError(() => error);
+      } )
+    );
+}
+
+uploadFilesWithProgress(formData: FormData, courierId: number, progressCallback: (fileName: string, progress: number) => void): Observable<any> {
+  return new Observable(observer => {
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = Math.round((event.loaded / event.total) * 100);
+        // Since we can't track individual files in a standard XHR upload,
+        // we'll just use a placeholder file name
+        progressCallback('upload', percentComplete);
+      }
+    };
+    
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        observer.next(JSON.parse(xhr.response));
+        observer.complete();
+      } else {
+        observer.error(xhr.response || 'Upload failed');
+      }
+    };
+    
+    xhr.onerror = () => {
+      observer.error('Upload failed');
+    };
+    
+    xhr.open('POST', `${this.apiUrl}/couriers/${courierId}/files`, true);
+    xhr.setRequestHeader('Authorization', `Bearer ${this.getToken()}`);
+    xhr.send(formData);
+    
+    // Return cleanup function
+    return () => {
+      xhr.abort();
+    };
+  });
+}
+
+
+private getToken(): string {
+  // This is a placeholder. Implement according to your auth system.
+  // For example, if you're storing the token in localStorage:
+  return localStorage.getItem('auth_token') || '';
+}
+
+cancelUpload(courierId: number): Observable<any> {
+  // This is a placeholder. Your backend needs to support cancellation.
+  return this.http.delete<any>(`${this.apiUrl}/couriers/${courierId}/upload`)
+    .pipe(
+      tap(res => console.log('Upload cancelled:', res)),
+      catchError((error: HttpErrorResponse) => {
+        console.error('Error cancelling upload:', error);
+        return throwError(() => error);
+      })
+    );
+}
+
+
+
+
   
   private handleError(message: string) {
     return (error: HttpErrorResponse) => {
@@ -233,4 +305,8 @@ export class DocumentsService {
       return throwError(() => new Error(message));
     };
   }
+
+
+
+
 }

@@ -11,7 +11,8 @@ import {
   DragDropModule,
 } from '@angular/cdk/drag-drop';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
-import { StepperComponent } from '../stepper/stepper.component';
+import { MatDialogRef } from '@angular/material/dialog';
+
 
 interface UploadFile {
   file: File;
@@ -25,7 +26,7 @@ interface UploadFile {
 @Component({
   selector: 'app-upload-doc',
   standalone: true,
-  imports: [FormsModule, CommonModule, DragDropModule, StepperComponent],
+  imports: [FormsModule, CommonModule, DragDropModule],
   templateUrl: './upload-doc.component.html',
   styleUrls: ['./upload-doc.component.css'],
 })
@@ -54,7 +55,8 @@ export class UploadDocComponent {
 
   constructor(
     private documentsService: DocumentsService,
-    private router: Router
+    private router: Router,
+    private dialogRef: MatDialogRef<UploadDocComponent>
   ) {}
 
   ngOnInit() {
@@ -223,6 +225,7 @@ export class UploadDocComponent {
             this.uploadFiles.forEach((u) => {
               u.uploadProgress = 100;
               u.status = 'success';
+              this.closeDialog();
             });
 
             // if embedded mode, emit raw OCR results for parent
@@ -251,7 +254,8 @@ export class UploadDocComponent {
     return item.id;
   }
 
-  closeSection() {
-    this.close.emit(true);
-  }
+closeDialog() {
+  this.dialogRef.close(true); 
+}
+
 }

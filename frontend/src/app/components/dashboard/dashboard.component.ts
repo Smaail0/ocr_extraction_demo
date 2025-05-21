@@ -51,6 +51,12 @@ interface Courier {
   styleUrls: ['./dashboard.component.css'],
 })
 export class DashboardComponent implements OnInit {
+
+  showUploadArea: boolean[] = [];
+  isDragging = false;
+  uploadProgress: { [key: string]: number } = {};
+  uploadingFiles: boolean = false;
+
   documents: Document[] = [];
   filteredDocuments: Document[] = [];
   
@@ -102,6 +108,8 @@ export class DashboardComponent implements OnInit {
     this.filterForm
       .get('date')
       ?.valueChanges.subscribe(() => this.applyFilters());
+
+      this.showUploadArea = new Array(this.couriers.length).fill(false);
   }
 
     
@@ -115,10 +123,18 @@ export class DashboardComponent implements OnInit {
         this.couriers = courriers;
         this.filteredCouriers = courriers; // Initialize filtered couriers
         this.courriersCount = courriers.length;
+
+             // Initialize expanded rows array and showUploadArea
+      this.expandedRows = new Array(courriers.length).fill(false);
+      this.showUploadArea = new Array(courriers.length).fill(false);
+      this.isLoadingData = false;
         // Initialize expanded rows array
         this.expandedRows = new Array(courriers.length).fill(false);
         this.isLoadingData = false;
         this.calculateStats(); // Recalculate stats after loading couriers
+
+
+
       },
       error: (error) => {
         console.error('Error loading couriers:', error);
@@ -168,6 +184,9 @@ export class DashboardComponent implements OnInit {
 
             // Calculate stats
             this.calculateStats();
+
+
+            
           });
       });
   }

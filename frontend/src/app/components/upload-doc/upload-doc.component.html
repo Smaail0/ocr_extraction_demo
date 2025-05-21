@@ -1,7 +1,5 @@
 <!-- src/app/components/upload-doc/upload-doc.component.html -->
 <div class="workflow">
-  <!-- <app-stepper *ngIf="mode === 'route'" [step]="0"></app-stepper> -->
-
   <div class="upload-container">
     <div *ngIf="serverError" class="alert alert-danger w-100 mx-0 mb-3">
       {{ serverError }}
@@ -28,7 +26,7 @@
 
             <p class="text-muted small mb-2" align="center">
               Veuillez télécharger uniquement les deux documents (Bulletin +
-              Ordonnance) 
+              Ordonnance)
             </p>
             <!-- Zone de dépôt -->
             <div
@@ -45,7 +43,10 @@
               <i class="bi bi-upload fs-1 mb-2"></i>
 
               <ng-container *ngIf="canAddMoreFiles; else maxReached">
-                <p>Glissez et déposez les fichiers ici <span class="text-danger">*</span> ou</p>
+                <p>
+                  Glissez et déposez les fichiers ici
+                  <span class="text-danger">*</span> ou
+                </p>
                 <label class="btn btn-outline-primary btn-sm">
                   Parcourir les Fichiers
                   <input
@@ -72,12 +73,14 @@
                 <li>Formats acceptés: PDF, JPG, PNG</li>
               </ul>
             </div>
-            
+
             <!-- Enhanced form inputs with required validation -->
             <div class="patient-info-section my-4 p-3 border rounded bg-light">
               <h6 class="mb-3 border-bottom pb-2">Informations du courier</h6>
               <div class="form-group row mb-3">
-                <label for="matricule" class="col-sm-4 col-form-label">Matricule : <span class="text-danger">*</span></label>
+                <label for="matricule" class="col-sm-4 col-form-label"
+                  >Matricule : <span class="text-danger">*</span></label
+                >
                 <div class="col-sm-8">
                   <input
                     type="text"
@@ -88,16 +91,29 @@
                     placeholder="Entrez le matricule de l'adhérent"
                     required
                     #matInput="ngModel"
-                    [ngClass]="{'is-invalid': matInput.invalid && (matInput.dirty || matInput.touched || formSubmitted)}"
+                    [ngClass]="{
+                      'is-invalid':
+                        matInput.invalid &&
+                        (matInput.dirty || matInput.touched || formSubmitted)
+                    }"
                   />
-                  <div *ngIf="matInput.invalid && (matInput.dirty || matInput.touched || formSubmitted)" class="invalid-feedback">
+                  <div
+                    *ngIf="
+                      matInput.invalid &&
+                      (matInput.dirty || matInput.touched || formSubmitted)
+                    "
+                    class="invalid-feedback"
+                  >
                     Ce champ est obligatoire.
                   </div>
                 </div>
               </div>
-              
+
               <div class="form-group row mb-3">
-                <label for="nom-adherent" class="col-sm-4 col-form-label">Nom et Prénom Adhérent: <span class="text-danger">*</span></label>
+                <label for="nom-adherent" class="col-sm-4 col-form-label"
+                  >Nom et Prénom Adhérent:
+                  <span class="text-danger">*</span></label
+                >
                 <div class="col-sm-8">
                   <input
                     type="text"
@@ -108,16 +124,33 @@
                     placeholder="Entrez le nom complet de l'adhérent"
                     required
                     #nomAdheInput="ngModel"
-                    [ngClass]="{'is-invalid': nomAdheInput.invalid && (nomAdheInput.dirty || nomAdheInput.touched || formSubmitted)}"
+                    [ngClass]="{
+                      'is-invalid':
+                        nomAdheInput.invalid &&
+                        (nomAdheInput.dirty ||
+                          nomAdheInput.touched ||
+                          formSubmitted)
+                    }"
                   />
-                  <div *ngIf="nomAdheInput.invalid && (nomAdheInput.dirty || nomAdheInput.touched || formSubmitted)" class="invalid-feedback">
+                  <div
+                    *ngIf="
+                      nomAdheInput.invalid &&
+                      (nomAdheInput.dirty ||
+                        nomAdheInput.touched ||
+                        formSubmitted)
+                    "
+                    class="invalid-feedback"
+                  >
                     Ce champ est obligatoire.
                   </div>
                 </div>
               </div>
-              
+
               <div class="form-group row mb-3">
-                <label for="nom-benef" class="col-sm-4 col-form-label">Nom et Prénom Bénéficiaire: <span class="text-danger">*</span></label>
+                <label for="nom-benef" class="col-sm-4 col-form-label"
+                  >Nom et Prénom Bénéficiaire:
+                  <span class="text-danger">*</span></label
+                >
                 <div class="col-sm-8">
                   <input
                     type="text"
@@ -128,22 +161,39 @@
                     placeholder="Entrez le nom complet du bénéficiaire"
                     required
                     #nomBenefInput="ngModel"
-                    [ngClass]="{'is-invalid': nomBenefInput.invalid && (nomBenefInput.dirty || nomBenefInput.touched || formSubmitted)}"
+                    [ngClass]="{
+                      'is-invalid':
+                        nomBenefInput.invalid &&
+                        (nomBenefInput.dirty ||
+                          nomBenefInput.touched ||
+                          formSubmitted)
+                    }"
                   />
-                  <div *ngIf="nomBenefInput.invalid && (nomBenefInput.dirty || nomBenefInput.touched || formSubmitted)" class="invalid-feedback">
+                  <div
+                    *ngIf="
+                      nomBenefInput.invalid &&
+                      (nomBenefInput.dirty ||
+                        nomBenefInput.touched ||
+                        formSubmitted)
+                    "
+                    class="invalid-feedback"
+                  >
                     Ce champ est obligatoire.
                   </div>
                 </div>
               </div>
-              
+
               <div class="text-muted small">
                 <span class="text-danger">*</span> Champs obligatoires
               </div>
             </div>
 
             <!-- File upload validation message -->
-             
-            <div *ngIf="uploadFiles.length === 0 && formSubmitted" class="alert alert-danger">
+
+            <div
+              *ngIf="uploadFiles.length === 0 && formSubmitted"
+              class="alert alert-danger"
+            >
               Veuillez télécharger au moins un fichier.
             </div>
 
@@ -190,7 +240,7 @@
                         ></div>
                       </div>
                       <i
-                        *ngSwitchCase="'success'"
+                        *ngSwitchCase="'success'" 
                         class="bi bi-check-circle-fill text-success fs-5"
                       ></i>
                       <i
@@ -211,33 +261,17 @@
                 </li>
               </ul>
             </div>
-
-            <!-- Barre de Progression Globale -->
-            <div *ngIf="isUploading" class="mb-4">
-              <label class="form-label">Progression de l'Extraction</label>
-              <div class="progress">
-                <div
-                  class="progress-bar progress-bar-striped progress-bar-animated"
-                  role="progressbar"
-                  [style.width.%]="uploadProgress"
-                >
-                  {{ uploadProgress }}%
-                </div>
-              </div>
-            </div>
           </div>
         </form>
       </div>
 
       <!-- Pied de page -->
       <div class="card-footer text-end">
-        <button class="btn btn-secondary me-2" (click)="closeSection()">
+        <button class="btn btn-secondary me-2" (click)="closeDialog()">
           Annuler
         </button>
-        <button
-          class="btn btn-primary"
-          (click)="uploadDocuments()"
-        >
+
+        <button class="btn btn-primary" (click)="uploadDocuments()">
           <span *ngIf="!isUploading">Analyser</span>
           <span *ngIf="isUploading">Extraction en cours...</span>
         </button>

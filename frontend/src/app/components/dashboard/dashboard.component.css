@@ -1,20 +1,4 @@
-:root {
-    --primary-color: #4361ee;
-    --primary-light: #4895ef;
-    --secondary-color: #3f37c9;
-    --success-color: #4cc9f0;
-    --warning-color: #f72585;
-    --danger-color: #e63946;
-    --gray-100: #f8f9fa;
-    --gray-200: #e9ecef;
-    --gray-300: #dee2e6;
-    --gray-400: #ced4da;
-    --gray-500: #adb5bd;
-    --gray-600: #6c757d;
-    --gray-700: #495057;
-    --gray-800: #343a40;
-    --gray-900: #212529;
-  }
+
   
   * {
     margin: 0;
@@ -424,6 +408,7 @@
 }
 
 .document-actions .btn-icon {
+
   width: 36px;
   height: 36px;
   border-radius: 6px;
@@ -437,7 +422,10 @@
   background-color: var(--primary-color);
   border-color: var(--primary-color);
   color: white;
+
 }
+
+
 
 /* Empty state */
 .no-documents {
@@ -777,6 +765,125 @@ border-top-color: var(--primary-color, #4a6cf7);
 animation: spin 1s ease-in-out infinite;
 margin-bottom: 15px;
 }
+
+/* Add these styles to your component's CSS file */
+
+.upload-area {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  background-color: #f9f9f9;
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.active-dropzone {
+  border-color: #4CAF50;
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+.upload-icon {
+  margin: 0 auto 1rem;
+  width: 50px;
+  height: 50px;
+  color: #666;
+}
+
+.upload-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.upload-area p {
+  margin: 0.5rem 0;
+  color: #666;
+}
+
+.or-text {
+  margin: 1rem 0;
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.file-select-button {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  background-color: #007bff;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.file-select-button:hover {
+  background-color: #0069d9;
+}
+
+/* Styles for upload progress */
+.upload-progress {
+  margin-top: 1rem;
+}
+
+.progress-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.progress-filename {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 1rem;
+}
+
+.progress-bar-container {
+  flex: 2;
+  height: 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: #007bff;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.progress-percentage {
+  width: 40px;
+  text-align: right;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.upload-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.cancel-upload-btn {
+  padding: 0.3rem 1rem;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.cancel-upload-btn:hover {
+  background-color: #c82333;
+}
+
+
 @keyframes spin {
 to { transform: rotate(360deg); }
 }
