@@ -223,7 +223,7 @@
             [class.expanded]="expandedRows[i]"
             (click)="toggleRowExpansion(i)"
           >
-            <td>#{{ courier.mat_fiscale }}</td>
+            <td>#{{ courier.matricule }}</td>
             <td>{{ courier.nom_complet_adherent }}</td>
             <td>{{ courier.nom_complet_beneficiaire }}</td>
             <td>{{ countOrdonnances(courier) }}</td>
@@ -237,7 +237,7 @@
             <td class="actions-cell">
               <button
                 class="btn-icon"
-                (click)="viewDocument(courier.id, $event)"
+                (click)="viewCourier(courier.id, $event)"
                 title="Voir le courrier"
               >
                 <svg
@@ -253,26 +253,8 @@
                   <circle cx="12" cy="12" r="3"></circle>
                 </svg>
               </button>
-              <button
-                class="btn-icon"
-                (click)="editDocument(courier.id, $event)"
-                title="Modifier le courrier"
-              >
-                <svg
-                  style="width: 16px; height: 16px"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2v-7"></path>
-                  <path
-                    d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
-                  ></path>
-                </svg>
-              </button>
+
+
               <button
                 class="btn-icon expand-toggle"
                 (click)="toggleRowExpansion(i, $event)"

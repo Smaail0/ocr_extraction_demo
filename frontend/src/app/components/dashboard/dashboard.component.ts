@@ -29,7 +29,7 @@ interface DocumentDetail {
 
 interface Courier {
   id: number;
-  mat_fiscale: string;
+  matricule: string;
   nom_complet_adherent: string;
   nom_complet_beneficiaire: string;
   files: {
@@ -214,7 +214,7 @@ export class DashboardComponent implements OnInit {
     this.filteredCouriers = this.couriers.filter((courier) => {
       // Search term filter (search in matricule, adherent name or beneficiary name)
       const matchesSearch = searchTerm === '' || 
-        courier.mat_fiscale?.toLowerCase().includes(searchTerm) ||
+        courier.matricule?.toLowerCase().includes(searchTerm) ||
         courier.nom_complet_adherent?.toLowerCase().includes(searchTerm) ||
         courier.nom_complet_beneficiaire?.toLowerCase().includes(searchTerm);
 
@@ -407,19 +407,22 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  viewDocument(courierId: number, event?: Event) {
+viewCourier(courierId: number, event?: Event) {
     if (event) {
       event.stopPropagation();
     }
-    this.router.navigate(['/couriers', courierId]);
+
+    this.documentsService.getCourierById(courierId).subscribe({
+      next: (data) => {
+        console.log('Courier data:', data);
+        this.router.navigate(['/extracted']);
+      },
+      error: (err) => {
+        console.error('Error fetching document:', err);
+      }
+    });
   }
 
-  editDocument(courierId: number, event?: Event) {
-    if (event) {
-      event.stopPropagation();
-    }
-    this.router.navigate([`/couriers/${courierId}/edit`]);
-  }
 
 viewPdfDocument(documentId: number, event?: Event) {
   if (event) {
