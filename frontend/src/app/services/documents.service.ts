@@ -39,12 +39,17 @@ export class DocumentsService {
     );
   }
 
+
+
   // Other existing methods...
   getBulletinById(id: number): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/bulletin/${id}`).pipe(
       catchError(this.handleError(`Error fetching bulletin with ID ${id}`))
     );
   }
+
+
+
 
   processBulletin(file: File): Observable<any> {
     const fd = new FormData();
@@ -111,16 +116,6 @@ export class DocumentsService {
     );
   }
 
-  getPrescriptionById(id: number): Observable<Prescription> {
-    return this.http
-      .get<Prescription>(`${this.apiUrl}/api/prescription/${id}`)
-      .pipe(
-        catchError((err: HttpErrorResponse) => {
-          console.error(`Error fetching prescription ${id}`, err);
-          return throwError(() => err);
-        })
-      );
-  }
 
   parseDocument(file: File): Observable<any> {
     const fd = new FormData();
@@ -158,6 +153,7 @@ export class DocumentsService {
       catchError(this.handleError(`Error fetching ordonnance with ID ${id}`))
     );
   }
+
 
   saveOrdonnanceData(data: any): Observable<any> {
     if (data.id) {
@@ -213,6 +209,13 @@ export class DocumentsService {
       catchError(this.handleError('Error deleting ordonnance'))
     );
   }
+
+  getCourierById(id: number): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/courrier/${id}`).pipe(
+      catchError(this.handleError(`Error fetching courier with ID ${id}`))
+    );
+  }
+
 
   deleteFile(fileId: number): Observable<any> {
     return this.http.delete(`${this.apiUrl}/api/files/${fileId}`).pipe(

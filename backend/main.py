@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import quote
 import os, re, shutil
 import traceback
 from typing import List, Optional
@@ -121,7 +122,7 @@ def detect_file_type_from_filename(filename: str) -> str:
     summary="Créer un Courier et y attacher 1+ fichiers"
 )
 async def upload_courrier(
-    mat_fiscale: str              = Form(...),
+    matricule: str              = Form(...),
     nom_complet_adherent: str     = Form(...),
     nom_complet_beneficiaire: str = Form(...),
     files: List[UploadFile]       = File(...),
@@ -129,7 +130,7 @@ async def upload_courrier(
 ):
 
     db_courier = models.Courier(
-        mat_fiscale=mat_fiscale,
+        matricule=matricule,
         nom_complet_adherent=nom_complet_adherent,
         nom_complet_beneficiaire=nom_complet_beneficiaire,
         created_at=datetime.utcnow()
@@ -417,47 +418,78 @@ def update_bulletin(
     db.refresh(db_b)
     return db_b
 
-@app.get("/api/files/{file_id}")
-async def get_file(file_id: int, db: Session = Depends(get_db)):
+
+@app.get("/api/files/{document_id}")
+def get_pdf(document_id: int, db: Session = Depends(get_db)):
+
+    file_rec = db.query(models.FileUpload).filter(models.FileUpload.id == document_id).first()
+    if not file_rec:
+        raise HTTPException(404, "Document not found")
+
+    path = file_rec.path
+    if not os.path.isfile(path):
+        raise HTTPException(404, "File not found on disk")
+
+    safe_name = quote(file_rec.original_name, safe="")
+    disposition = f"inline; filename*=UTF-8''{safe_name}"
+
+    return FileResponse(
+        path,
+        media_type='application/pdf',
+        headers={'Content-Disposition': disposition}
+    )
+    
+@app.get("/api/bulletin/{id}")
+def get_bulletin_by_id(id: int, db: Session = Depends(get_db)):
+    bulletin = db.query(models.Bulletin).filter(models.Bulletin.id == id).first()
+    if not bulletin:
+        raise HTTPException(status_code=404, detail=f"Bulletin with ID {id} not found")
+    return bulletin
+
+@app.get("/api/ordonnance/{id}")
+def get_ordonnance_by_id(id: int, db: Session = Depends(get_db)):
+    ordonnance = db.query(models.Prescription).filter(models.Prescription.id == id).first()
+    if not ordonnance:
+        raise HTTPException(status_code=404, detail=f"Ordonnance with ID {id} not found")
+    return ordonnance
+
+@app.get("/api/courrier/{courier_id}", response_model=schemas.Courier)
+async def get_courrier(courier_id: int, db: Session = Depends(get_db)):
     """
-    Serve a file by its ID. Returns the actual file content.
+    Fetch a specific courier by its ID.
     """
     try:
-        # Get the file record from database
-        db_file = db.query(models.FileUpload).filter(models.FileUpload.id == file_id).first()
-        
-        if not db_file:
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        # Check if the file exists on disk
-        if not os.path.exists(db_file.path):
-            raise HTTPException(status_code=404, detail="File not found on disk")
-        
-        # Determine the media type based on file extension
-        file_extension = os.path.splitext(db_file.original_name)[1].lower()
-        media_type = "application/pdf"  # Default to PDF
-        
-        if file_extension == ".pdf":
-            media_type = "application/pdf"
-        elif file_extension in [".jpg", ".jpeg"]:
-            media_type = "image/jpeg"
-        elif file_extension == ".png":
-            media_type = "image/png"
-        
-        # Return the file
-        return FileResponse(
-            path=db_file.path,
-            media_type=media_type,
-            filename=db_file.original_name,
-            headers={"Content-Disposition": f"inline; filename=\"{db_file.original_name}\""}
-        )
-        
-    except HTTPException:
-        raise
+        courrier = (
+            db.query(models.Courier)
+            .options(joinedload(models.Courier.files))
+            .filter(models.Courier.id == courier_id)
+            .first())
+        if not courrier:
+            raise HTTPException(status_code=404, detail="Courier not found")
+        return courrier
     except Exception as e:
-        print(f"Error serving file: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error serving file")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to fetch courier")
 
+
+
+@app.delete("/api/files/{document_id}")
+def delete_file(document_id: int, db: Session = Depends(get_db)):
+    file_rec = db.query(models.FileUpload).filter(models.FileUpload.id == document_id).first()
+    if not file_rec:
+        raise HTTPException(404, "Document not found")
+
+    # Delete the file from the filesystem
+    try:
+        os.remove(file_rec.path)
+    except Exception as e:
+        raise HTTPException(500, f"Failed to delete file from disk: {str(e)}")
+
+    # Delete the record from the database
+    db.delete(file_rec)
+    db.commit()
+
+    return {"message": "File deleted successfully"}
 
 #@app.on_event("startup")
 #def reset_database_on_startup():

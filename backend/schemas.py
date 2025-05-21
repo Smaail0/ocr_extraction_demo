@@ -100,7 +100,7 @@ class UploadedFileInfo(BaseModel):
         orm_mode = True
 
 class CourierBase(BaseModel):
-    mat_fiscale: str
+    matricule: str
     nom_complet_adherent: str
     nom_complet_beneficiaire: str
 

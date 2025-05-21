@@ -392,7 +392,7 @@ export class DashboardComponent implements OnInit {
 
   openUploadModal() {
     const dialogRef = this.dialog.open(UploadDocComponent, {
-      width: '80%',
+      width: '90%',
       maxWidth: '1000px',
       height: '90%',
       maxHeight: '1000px',

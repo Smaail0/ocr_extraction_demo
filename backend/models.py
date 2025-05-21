@@ -83,7 +83,7 @@ class Courier(Base):
     __tablename__ = "couriers"
 
     id = Column(Integer, primary_key=True, index=True)
-    mat_fiscale = Column(String)
+    matricule = Column(String)
     nom_complet_adherent = Column(String)
     nom_complet_beneficiaire = Column(String)
     

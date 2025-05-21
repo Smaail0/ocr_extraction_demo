@@ -1,9 +1,54 @@
 /* src/app/components/upload-doc/upload-doc.component.css */
 
+.workflow {
+  background-color: #f5f7fb;
+  min-height: 100vh;
+  padding: 2rem 0;
+}
+
 .upload-container {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 20px 0;
+  padding: 0 1.5rem;
+}
+
+.card {
+  border-radius: 10px;
+  border: none;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.card-header {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 1.25rem 1.5rem;
+  border-bottom: none;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+.card-footer {
+  background: white;
+  border-top: 1px solid var(--gray-200);
+  padding: 1.25rem 1.5rem;
+}
+h2 {
+  color: white;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+ h5, h6 {
+  color: var(--gray-800);
+  font-weight: 600;
 }
 
 .upload-drop-area {
@@ -11,81 +56,245 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 25px;
-  border: 2px dashed #ccc;
-  border-radius: 5px;
-  background-color: #f9f9f9;
+  padding: 2rem;
+  border: 2px dashed var(--gray-300);
+  border-radius: 10px;
+  background-color: var(--gray-100);
   transition: all 0.3s ease;
   cursor: pointer;
-  min-height: 150px;
-  margin-bottom: 15px;
+  min-height: 180px;
+  margin-bottom: 1rem;
 }
 
 .upload-drop-area.active {
-  border-color: #0d6efd;
-  background-color: rgba(13, 110, 253, 0.1);
+  border-color: var(--primary-color);
+  background-color: rgba(67, 97, 238, 0.05);
 }
 
 .upload-drop-area.disabled {
   opacity: 0.7;
   cursor: not-allowed;
+  background-color: var(--gray-200);
+}
+
+.upload-drop-area i {
+  color: var(--primary-color);
 }
 
 .file-thumb {
   object-fit: cover;
-  background-color: #f1f1f1;
+  background-color: var(--gray-200);
+  border-radius: 4px;
 }
 
 .drag-handle {
   cursor: grab;
-  color: #888;
+  color: var(--gray-500);
 }
 
 .patient-info-section {
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  background-color: var(--gray-100);
+  border: 1px solid var(--gray-300);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
   transition: all 0.3s ease;
 }
 
 .patient-info-section:hover {
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+  border-color: var(--gray-400);
+}
+
+.patient-info-section h6 {
+  color: var(--gray-700);
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--gray-300);
+}
+
+.form-control {
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  transition: all 0.2s;
 }
 
 .form-control:focus {
-  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-  border-color: #86b7fe;
+  box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+  border-color: var(--primary-color);
 }
 
-.card {
-  overflow: hidden;
-  transition: transform 0.3s ease;
+.form-control::placeholder {
+  color: var(--gray-500);
 }
 
-.card:hover {
-  transform: translateY(-2px);
+.form-control-sm {
+  min-height: 38px;
 }
 
-.card-header {
-  background-color: #0d6efd;
+.col-form-label {
+  color: var(--gray-700);
+  font-weight: 500;
+}
+
+.list-group-item {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gray-200);
+  transition: background-color 0.2s ease;
+}
+
+.list-group-item:hover {
+  background-color: var(--gray-100);
+}
+
+.btn {
+  font-weight: 500;
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: var(--secondary-color);
+  border-color: var(--secondary-color);
+}
+
+.btn-secondary {
+  background-color: var(--gray-200);
+  border-color: var(--gray-300);
+  color: var(--gray-700);
+}
+
+.btn-secondary:hover {
+  background-color: var(--gray-300);
+  border-color: var(--gray-400);
+  color: var(--gray-800);
+}
+
+.btn-outline-primary {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--primary-color);
   color: white;
 }
 
-h6 {
-  color: #0d6efd;
-  font-weight: 600;
+.btn-outline-danger {
+  border-color: var(--danger-color);
+  color: var(--danger-color);
+}
+
+.btn-outline-danger:hover {
+  background-color: var(--danger-color);
+  color: white;
+}
+
+.btn-sm {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.875rem;
 }
 
 .progress {
-  height: 1rem;
+  height: 0.75rem;
   border-radius: 0.5rem;
   overflow: hidden;
+  background-color: var(--gray-200);
+}
+
+.progress-bar {
+  background-color: var(--primary-color);
+}
+
+.alert {
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.alert-danger {
+  background-color: rgba(230, 57, 70, 0.1);
+  border-color: rgba(230, 57, 70, 0.2);
+  color: var(--danger-color);
+}
+
+.text-muted {
+  color: var(--gray-600) !important;
+}
+
+/* Icons styling */
+.bi {
+  vertical-align: -0.125em;
+}
+
+.bi-check-circle-fill {
+  color: var(--success-color);
+}
+
+.bi-exclamation-circle-fill {
+  color: var(--danger-color);
+}
+
+
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .workflow {
+    padding: 1rem 0;
+  }
+  
+  .upload-container {
+    padding: 0 1rem;
+  }
+  
+  .card-header, .card-body, .card-footer {
+    padding: 1rem;
+  }
+  
+  .upload-drop-area {
+    padding: 1.5rem;
+    min-height: 150px;
+  }
+  
+  .patient-info-section {
+    padding: 1rem;
+  }
 }
 
 @media (max-width: 576px) {
   .form-group.row {
-    display: block;
+    flex-direction: column;
   }
   
-  .form-group label {
+  .col-form-label {
     margin-bottom: 0.5rem;
+    padding-bottom: 0;
+  }
+  
+  .col-sm-4, .col-sm-8 {
+    width: 100%;
+    padding: 0;
+  }
+  
+  .card-footer {
+    text-align: center;
+  }
+  
+  .card-footer .btn {
+    width: 100%;
+    margin: 0.5rem 0;
+  }
+  
+  .card-footer .btn + .btn {
+    margin-left: 0;
   }
 }

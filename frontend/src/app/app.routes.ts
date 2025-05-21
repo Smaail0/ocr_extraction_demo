@@ -7,7 +7,7 @@ import { DashboardComponent } from './components/dashboard/dashboard.component';
 export const routes: Routes = [
   { path: '',        component: DashboardComponent },
   { path: 'upload', component: UploadDocComponent},
-  { path: 'extracted', component: ExtractedContainerComponent },
+{ path: 'extracted/:courierId', component: ExtractedContainerComponent },
   { path: 'dashboard', component: DashboardComponent },
   { path: '**',      redirectTo: '' }
 ];
