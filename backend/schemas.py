@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, Extra
+from pydantic import BaseModel, Field, Extra, EmailStr
 
 class PrescriptionItem(BaseModel):
     codePCT: str = ""
@@ -93,12 +93,39 @@ class BulletinBase(BaseModel):
     dateAccouchement: Optional[str] = Field(None, alias="dateAccouchement")
     
     class Config:
+        allow_population_by_field_name = True
         validate_by_name = True
         from_attributes = True
         
-
 class BulletinCreate(BulletinBase):
-    identifiantUnique: str 
+    identifiantUnique: str
+
+class UploadedFileInfo(BaseModel):
+    id: int
+    filename: str
+    original_name: str
+    path: str
+    type: str
+    uploaded_at: datetime
+
+    class Config:
+        orm_mode = True
+    
+class CourierBase(BaseModel):
+    mat_fiscale: str
+    nom_complet_adherent: str
+    nom_complet_beneficiaire: str
+    
+class CourierCreate(CourierBase):
+    pass
+
+class Courier(CourierBase):
+    id: int
+    created_at: datetime
+    files: List[UploadedFileInfo]
+
+    class Config:
+        orm_mode = True
 
 class Bulletin(BulletinBase):
     id: int
@@ -107,52 +134,72 @@ class Bulletin(BulletinBase):
 
     class Config:
         from_attributes = True
-
-# ── FileUpload / UploadResponse ──
-class UploadedFileInfo(BaseModel):
-    id: int
-    filename: str
-    original_name: str
-
+        
 class UploadResponse(BaseModel):
     message: str
     uploaded_files: List[UploadedFileInfo]
-
-# ── Patient & relationships ──
-class PatientBase(BaseModel):
-    first_name: str
-    last_name: str
-
-class PatientCreate(PatientBase):
-    pass
-
-class Patient(PatientBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
+   
 class BulletinInDB(Bulletin):
     id: int
-    patient_id: int
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
-
+        
 class PrescriptionInDB(Prescription):
     id: int
-    patient_id: int
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
 
-class PatientWithDocs(Patient):
-    bulletins: List[BulletinInDB]       = []
-    prescriptions: List[PrescriptionInDB] = []
+class FileUploadBase(BaseModel):
+    filename: str
+    file_path: str
+
+class FileUploadCreate(FileUploadBase):
+    pass
+
+class FileUpload(FileUploadBase):
+    id: int
+
+    class Config:
+        orm_mode = True
+
+class FileDocumentAssociation(BaseModel):
+    file_id: int
+    document_id: int
+    document_type: str  # "bulletin" or "prescription" or "ordonnance"
+            
+class UserBase(BaseModel):
+    email: EmailStr
+
+class UserCreate(UserBase):
+    username: str
+    password: str
+    is_superuser: Optional[bool] = False
+    is_active:    Optional[bool] = True
+
+class UserRead(UserBase):
+    id: int
+    is_active: bool
+    is_superuser: bool
+    class Config:
+        orm_mode = True
+        
+class UserUpdate(BaseModel):
+    username:    Optional[str]      = None
+    email:       Optional[EmailStr] = None
+    password:    Optional[str]      = None
+    is_active:   Optional[bool]     = None
+    is_superuser: Optional[bool]    = None
     
+    class Config:
+        # allow omission of unset fields
+        extra = "ignore"
+    
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

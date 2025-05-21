@@ -1,0 +1,36 @@
+/* Center & pad content */
+.confirm-dialog-content {
+  padding: 1.5rem 1rem;
+  font-size: 1rem;
+  color: #333;
+}
+
+/* Actions area */
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 1rem;
+}
+
+/* Cancel button override */
+.cancel-btn {
+  border-color: #4361ee;
+  color: #4361ee;
+}
+
+/* Hover/focus overrides for Material */
+.mat-stroked-button.cancel-btn:hover,
+.mat-stroked-button.cancel-btn.cdk-focused {
+  background-color: rgba(67,97,238,0.1) !important;
+}
+
+/* Delete button override */
+.delete-btn {
+  background-color: #dc3545;
+  color: #fff;
+}
+.delete-btn:hover,
+.mat-flat-button.delete-btn.cdk-focused {
+  background-color: #c82333 !important;
+}

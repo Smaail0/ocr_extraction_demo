@@ -2,11 +2,14 @@ import { Component, Input, OnInit, SimpleChanges}   from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';      // ← import ActivatedRoute
 import { CommonModule }        from '@angular/common';
 import { FormsModule }         from '@angular/forms';
-import { DocumentsService }    from '../../services/documents.service';
 import { Prescription, PrescriptionCreate }        from '../../models/prescription.model';
 import writtenNumber from 'written-number'
 import { environment } from '../../../environments/environment';
 import { ExtractedTabsComponent }  from '../extracted-tabs/extracted-tabs.component';
+import { HttpErrorResponse } from '@angular/common/http';
+import { HttpClientModule } from '@angular/common/http';
+import { SignatureResult, DocumentsService } from '../../services/documents.service';
+
 
 writtenNumber.defaults.lang = 'fr';
 
@@ -16,6 +19,7 @@ writtenNumber.defaults.lang = 'fr';
   imports: [
     CommonModule, 
     FormsModule,
+    HttpClientModule
   ],
   templateUrl: './prescription.component.html',
   styleUrls: ['./prescription.component.css']
@@ -23,6 +27,8 @@ writtenNumber.defaults.lang = 'fr';
 export class PrescriptionComponent implements OnInit {
   @Input() prescription!: Prescription;
 
+  signatureLoading = false;
+  signatureResult: SignatureResult | null = null;
   isEditMode = false;
   showStatusAlert = false;
   isEditing: boolean = false;
@@ -93,21 +99,60 @@ export class PrescriptionComponent implements OnInit {
     this.prescription.dispensationDate = toIso(this.prescription.dispensationDate);
   }
   
+  analyseSignature() {
+    console.log('» analyseSignature clicked, id =', this.prescription.id);
+    if (!this.prescription.id) return;
+    this.signatureLoading = true;
+    this.documentsService.verifySignature(this.prescription.id).subscribe({
+      next: (res) => {
+        this.signatureResult  = res;
+        this.signatureLoading = false;
+      },
+      error: () => {
+        this.signatureLoading = false;
+      }
+    });
+  }
+
+  private parseFrenchNumber(s?: string): number {
+    if (!s) return 0;
+    // remove regular spaces + NBSP + narrow NBSP, then convert comma→dot
+    const cleaned = s
+      .replace(/[\u00A0\u202F\s]+/g, '')
+      .replace(',', '.');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : n;
+  }
 
   calculateTotals(): void {
-    const parseNum = (s?: string) =>
-      s ? parseInt(s.replace(/\D+/g,''),10)||0 : 0;
+  const parseFrenchNumber = (s?: string): number => {
+    if (!s) return 0;
+    const cleaned = s.replace(/[\u00A0\u202F\s]+/g, '').replace(',', '.');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : n;
+  };
 
-    const totalNum = parseNum(this.prescription.total);
-    const sumPercu = this.prescription.items
-      .map(i => parseNum(i.montantPercu))
-      .reduce((a,b) => a+b, 0);
+  const totalNum = parseFrenchNumber(this.prescription.total);
+  const sumPercu = this.prescription.items
+    .map(i => parseFrenchNumber(i.montantPercu))
+    .reduce((a, b) => a + b, 0);
+  const remaining = Math.max(0, totalNum - sumPercu);
 
-    const restant = totalNum - sumPercu;
-    this.prescription.mtPercu = sumPercu.toLocaleString('fr-FR');
-    this.prescription.mtRes   = restant.toLocaleString('fr-FR');
-    this.calculateTotalInWords();
-  }
+  const formatNumber = (n: number): string => {
+    // if there's a fractional part, show exactly 3 decimals
+    const hasFraction = Math.abs(n % 1) > 1e-9;
+    const opts: Intl.NumberFormatOptions = hasFraction
+      ? { minimumFractionDigits: 3, maximumFractionDigits: 3 }
+      : { minimumFractionDigits: 0, maximumFractionDigits: 0 };
+    // use en-US to get comma as thousands separator and dot as decimal point
+    return n.toLocaleString('en-US', opts);
+  };
+
+  this.prescription.mtPercu = formatNumber(sumPercu);
+  this.prescription.mtRes   = formatNumber(remaining);
+
+  this.calculateTotalInWords();
+}
 
   ngOnInit() {
     // Only reset flags here, do NOT read router state any more:
@@ -158,7 +203,10 @@ saveToDb(): void {
     pharmacistCnamRef: this.prescription.pharmacistCnamRef,
     items:             this.prescription.items,
     total:             this.prescription.total,
-    totalInWords:      this.prescription.totalInWords
+    totalInWords:      this.prescription.totalInWords,
+
+    signatureCropFile:  this.prescription.signatureCropFile ?? undefined,
+    nom_prenom_docteur: this.prescription.nom_prenom_docteur ?? undefined,
   };
 
   console.log('📤 Saving prescription:', payload);
@@ -168,6 +216,9 @@ saveToDb(): void {
     next: presc => {
       console.log('✅ Saved prescription:', presc);
       this.successMessage = 'Ordonnance enregistrée en base !';
+
+      this.prescription.id = presc.id;
+      Object.assign(this.prescription, presc);
     },
     error: err => {
       console.error('❌ Saving prescription failed', err);

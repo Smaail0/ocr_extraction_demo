@@ -15,17 +15,13 @@ from .prescription_cropper import extract_doctor_name
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 load_dotenv()
-ENDPOINT = os.getenv("DOCUMENT_INTELLIGENCE_ENDPOINT")
-KEY      = os.getenv("DOCUMENT_INTELLIGENCE_API_KEY")
-MODEL_ID = os.getenv("SIGNATURE_MODEL_ID")
 DPI      = 300
 
 # Thresholds (tune on your genuine–genuine baseline)
 AKAZE_THRESHOLD = 0.20
 SSIM_THRESHOLD  = 0.50
 
-client = DocumentIntelligenceClient(ENDPOINT, AzureKeyCredential(KEY))
-
+client = ""
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,7 +66,7 @@ def get_signature_crop(path: str) -> np.ndarray:
 
     try:
         with open(path_str,"rb") as f:
-            poller = client.begin_analyze_document(MODEL_ID, f)
+            poller = client.begin_analyze_document("", f)
         result = poller.result()
     except Exception:
         return fallback()
@@ -149,15 +145,14 @@ def compare_ssim(a: np.ndarray, b: np.ndarray) -> float:
 
 def verify_signature(test_crop: np.ndarray, genuine_path: str):
     # collect genuine samples
-    if os.path.isdir(genuine_path):
+    if os.path.isdir(genuine_path) or os.path.isfile(genuine_path):
         files = [os.path.join(genuine_path,f)
                  for f in os.listdir(genuine_path)
                  if f.lower().endswith((".png",".jpg","jpeg"))]
     elif os.path.isfile(genuine_path):
         files = [genuine_path]
     else:
-        print(f"❌ Genuine path not found: {genuine_path}")
-        sys.exit(1)
+        raise FileNotFoundError(f"No genuine signatures found at '{genuine_path}'")
 
     p_test = preprocess(test_crop)
     best_akaze, best_ssim = 0.0, 0.0

@@ -5,22 +5,6 @@ from sqlalchemy.orm import relationship
 from .database import Base
 from sqlalchemy.dialects.postgresql import JSON
 
-class Patient(Base):
-    __tablename__ = "patients"
-    __table_args__ = (
-      UniqueConstraint("first_name", "last_name", name="uq_patient_name"),
-    )
-    id          = Column(Integer, primary_key=True, index=True)
-    first_name  = Column(String, nullable=False, index=True)
-    last_name   = Column(String, nullable=False, index=True)
-    created_at  = Column(DateTime, default=datetime.utcnow)
-    updated_at  = Column(DateTime, default=datetime.utcnow,
-                         onupdate=datetime.utcnow)
-
-    bulletins     = relationship("Bulletin",    back_populates="patient")
-    prescriptions = relationship("Prescription", back_populates="patient")
-
-
 class Bulletin(Base):
     __tablename__ = "bulletins"
 
@@ -63,9 +47,8 @@ class Bulletin(Base):
 
     codeApci       = Column("codeApci",       String, nullable=True)
     dateAccouchement = Column("dateAccouchement", String, nullable=True)
-
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    patient    = relationship("Patient", back_populates="bulletins")
+    
+    files = relationship("FileUpload", back_populates="bulletin")
 
 
 class Prescription(Base):
@@ -93,18 +76,53 @@ class Prescription(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    patient    = relationship("Patient", back_populates="prescriptions")
     
     signatureCropFile = Column(String, nullable=True)
     nom_prenom_docteur    = Column(String, nullable=True)
+    
+    file_id = Column(Integer, ForeignKey('file_uploads.id'))
+    
+    files = relationship("FileUpload", back_populates="prescriptions")
 
 class FileUpload(Base):
     __tablename__ = "file_uploads"
-
     id            = Column(Integer, primary_key=True, index=True)
     filename      = Column(String,  nullable=False)
     original_name = Column(String,  nullable=False)
     path          = Column(String,  nullable=False)
+    type          = Column(String,  nullable=False)   # bulletin or ordonnance
     uploaded_at   = Column(DateTime, default=datetime.utcnow)
+
+    bulletin_id = Column(Integer, ForeignKey('bulletins.id'))
+    bulletin = relationship("Bulletin", back_populates="files")
+    
+    prescriptions = relationship("Prescription", back_populates="files")
+
+    
+    courier_id = Column(Integer, ForeignKey("couriers.id"))
+    courier = relationship("Courier", back_populates="files")
+    
+class User(Base):
+    __tablename__ = "users"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    username      = Column(String, unique=True, nullable=False)
+    email         = Column(String, unique=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active     = Column(Boolean, default=True)
+    is_superuser  = Column(Boolean, default=False)
+    created_at    = Column(DateTime, default=datetime.utcnow)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+class Courier(Base):
+    __tablename__ = "couriers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mat_fiscale = Column(String)
+    nom_complet_adherent = Column(String)
+    nom_complet_beneficiaire = Column(String)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    files = relationship("FileUpload", back_populates="courier")
+

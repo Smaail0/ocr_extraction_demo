@@ -18,6 +18,7 @@ export interface PrescriptionItem {
 }
 
 export interface Prescription {
+  id: number;
   header: DocumentHeader;
 
   /** optional name of the uploaded file */
@@ -52,6 +53,10 @@ export interface Prescription {
   mtRes?: string;
 
   signatureCropFile?: string | null;
+  nom_prenom_docteur?: string | null;
+
+  uploaded_at?: string;
+  status?: 'verified' | 'pending' | 'flagged' | 'missed';
 }
 
 // This is what you send to the POST /prescription endpoint
@@ -71,4 +76,7 @@ export interface PrescriptionCreate {
   items: PrescriptionItem[];
   total?: string;
   totalInWords?: string; 
+
+  signatureCropFile?: string;
+  nom_prenom_docteur?: string;
 }

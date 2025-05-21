@@ -86,34 +86,4 @@
     margin-top: 0.25rem;
   }
 
-  .signature-container {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  margin: 1rem 0;
-}
-
-.signature-label {
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-}
-
-.signature-img {
-  /* fixed box size */
-  width: 300px;
-  height: 120px;
-
-  /* keep aspect ratio, letter-box or pillar-box if needed */
-  object-fit: contain;
-
-  /* blue outline */
-  border: 2px solid #0d6efd; /* Bootstrap “primary” blue */
-
-  /* subtle drop-shadow */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-
-  /* soften corners */
-  border-radius: 4px;
-}
-
   

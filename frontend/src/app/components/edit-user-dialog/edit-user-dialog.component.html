@@ -1,0 +1,115 @@
+<h2 mat-dialog-title>Edit User</h2>
+
+<mat-dialog-content [formGroup]="form" class="edit-dialog-content">
+  <!-- Username -->
+  <div class="input-group mb-3">
+    <span class="input-group-text">
+      <!-- person outline icon -->
+      <svg
+        class="stat-icon user"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle cx="12" cy="7" r="4"></circle>
+        <path d="M5.5 21a8.38 8.38 0 0113 0"></path>
+      </svg>
+    </span>
+    <input
+      matInput
+      class="form-control rounded-pill"
+      placeholder="Username"
+      formControlName="username"
+    />
+  </div>
+
+  <!-- Email -->
+  <div class="input-group mb-3">
+    <span class="input-group-text">
+      <!-- envelope outline icon -->
+      <svg
+        class="stat-icon email"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
+        <polyline points="22,7 12,13 2,7"></polyline>
+      </svg>
+    </span>
+    <input
+      matInput
+      class="form-control rounded-pill"
+      placeholder="Email"
+      formControlName="email"
+    />
+  </div>
+
+  <div class="col-12 col-md-4">
+    <div class="input-group">
+      <span class="input-group-text">
+        <svg
+          class="stat-icon password"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0110 0v4"></path>
+        </svg>
+      </span>
+      <input
+        [type]="showPassword ? 'text' : 'password'"
+        id="password"
+        class="form-control rounded-pill"
+        formControlName="password"
+        placeholder="Password"
+      />
+      <button
+        type="button"
+        class="input-group-text password-toggle clickable"
+        (click)="toggleShowPassword()"
+        title="Toggle password visibility"
+      >
+        <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Active & Superuser checkboxes -->
+  <div class="d-flex gap-4 mb-3">
+    <mat-checkbox formControlName="is_active" class="form-check-inline">
+      Active
+    </mat-checkbox>
+    <mat-checkbox formControlName="is_superuser" class="form-check-inline">
+      Superuser
+    </mat-checkbox>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions class="justify-end dialog-actions">
+  <button mat-stroked-button class="rounded-pill cancel-btn" (click)="cancel()">
+    Cancel
+  </button>
+  <button
+    mat-flat-button
+    color="primary"
+    class="rounded-pill save-btn"
+    (click)="save()"
+    [disabled]="form.invalid"
+  >
+    Save
+  </button>
+</mat-dialog-actions>

@@ -1,0 +1,62 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <h2 class="auth-title">Sign in</h2>
+    <br>
+
+    <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+      <!-- Email / Phone -->
+      <div class="form-group">
+        <input
+          formControlName="email"
+          type="text"
+          placeholder="Email or Phone"
+          class="input-field"
+        />
+        <div
+          *ngIf="loginForm.get('email')?.touched && loginForm.get('email')?.invalid"
+          class="error"
+        >
+          Please enter a valid email.
+        </div>
+      </div>
+
+      <!-- Password + toggle -->
+      <div class="form-group password-group">
+        <input
+          formControlName="password"
+          [type]="showPassword ? 'text' : 'password'"
+          placeholder="Password"
+          class="input-field"
+        />
+        <button
+          type="button"
+          class="toggle-password"
+          (click)="toggleShowPassword()"
+        >
+          {{ showPassword ? 'hide' : 'show' }}
+        </button>
+        <div
+          *ngIf="loginForm.get('password')?.touched && loginForm.get('password')?.invalid"
+          class="error"
+        >
+          Password is required.
+        </div>
+      </div>
+
+      <div class="forgot-password">
+        <a routerLink="/forgot-password">Forgot password?</a>
+      </div>
+
+      <button
+        type="submit"
+        class="btn-primary"
+        [disabled]="loginForm.invalid"
+      >
+        Sign in
+    </button>
+    <div align = "center"
+     *ngIf="errorMsg" class="error">{{ errorMsg }}
+    </div>
+    </form>
+  </div>
+</div>

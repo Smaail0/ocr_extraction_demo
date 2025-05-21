@@ -1,0 +1,62 @@
+/* Ensure the dialog content can scroll if it’s tall */
+.edit-dialog-content {
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.edit-dialog-content .input-group:first-of-type {
+  margin-top: 1rem;
+}
+
+.d-flex.gap-4 {
+  margin-bottom: 1.5rem;
+}
+
+/* SVG icon sizing */
+.stat-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #4361ee;
+}
+
+.input-group-text {
+    margin: 0;
+}
+
+/* Align checkboxes nicely */
+.form-check-inline {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Actions buttons container */
+.dialog-actions {
+  margin: 0;
+}
+.dialog-actions .cancel-btn {
+  margin-right: 0.5rem;
+  background-color: transparent;
+  border-color: #4361ee;
+}
+
+.dialog-actions .save-btn {
+  background-color: #4361ee;
+  color: #fff;
+}
+
+/* Hover states */
+button.mat-stroked-button.cancel-btn:hover,
+.mat-stroked-button.cancel-btn.cdk-program-focused,
+.mat-stroked-button.cancel-btn.cdk-focused,
+.mat-stroked-button.cancel-btn.cdk-keyboard-focused {
+  background-color: #f0f0f0 !important;
+}
+
+button.mat-flat-button.save-btn:hover,
+.mat-flat-button.save-btn.cdk-program-focused,
+.mat-flat-button.save-btn.cdk-focused,
+.mat-flat-button.save-btn.cdk-keyboard-focused {
+  background-color: #364fc7 !important;
+}

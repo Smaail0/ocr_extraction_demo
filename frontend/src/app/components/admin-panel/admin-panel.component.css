@@ -1,0 +1,287 @@
+/* Reuse your dashboard layout */
+.dashboard {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  min-height: 100vh;
+}
+.main-content {
+  grid-column: 2;
+  padding: 2rem;
+  background: #f9fafb;
+  overflow-y: auto;
+}
+
+/* Header */
+.header {
+  margin-bottom: 1.5rem;
+}
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: #333;
+}
+
+/* Stack cards vertically */
+.cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5rem;
+}
+
+/* Card base */
+.admin-card {
+  background: #fff;
+  padding: 3rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+.card-title {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+/* Form grouping: align all columns at the top */
+.field-group {
+  display: flex;
+  gap: 5rem;
+  margin-bottom: 5rem;
+  align-items: flex-start;
+}
+.flex-fill {
+  flex: 1 1 240px;
+  position: relative;
+}
+
+/* Make input groups a positioning context */
+.input-group {
+  position: relative;
+}
+
+.input-group .form-control {
+  flex: 1 1 auto;
+}
+
+/* Input fields */
+.input-group .form-control,
+.form-control {
+  padding-left: 0.75rem;
+  background: #fff;
+  position: relative;
+  z-index: 1;
+}
+.form-control::placeholder {
+  opacity: 0.6;
+}
+
+/* Increase right padding for password fields to fit toggle */
+.input-group .form-control[type="password"],
+.input-group .form-control[type="text"] {
+  padding-right: 3rem;
+}
+
+/* Password toggle */
+.input-group .input-group-text.password-toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  z-index: 3;
+}
+
+/* Labels */
+.admin-card label,
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #444;
+  margin-bottom: 0.5rem;
+}
+
+/* Checkboxes */
+.form-check {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 2rem;
+  margin-bottom: 0;
+}
+.form-check-input,
+.mat-checkbox-input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+}
+.form-check-label,
+.mat-checkbox-label {
+  margin: 0.45rem 0 0 0.5rem;
+  font-size: 0.875rem;
+  color: #444;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* Actions row: checkbox on the left, button on the right */
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.input-group-text svg.stat-icon {
+  background: none;
+  margin: 0;
+  padding: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.input-group-text {
+  position: relative;
+  background-color: rgba(67, 97, 238, 0.1);
+  border-radius: 1rem 0 0 1rem;
+  margin-right: 0;
+  margin-left: 0.5rem;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.form-control.rounded-pill {
+  /* only round the two outer corners */
+  border-radius: 0 1rem 1rem 0 !important;
+}
+
+button.add-user-btn,
+button.mat-raised-button.add-user-btn {
+  background-color: #1565c0;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+button.add-user-btn:hover,
+button.mat-raised-button.add-user-btn:hover {
+  background-color: #124a8b;
+}
+
+/* Table styling to match dashboard style */
+table.full-width-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05) !important;
+  border: none;
+}
+table.full-width-table th,
+table.full-width-table td {
+  padding: 1rem;
+  text-align: left;
+  border: none;
+}
+table.full-width-table th {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  font-weight: 600;
+  box-shadow: none;
+  border-bottom: none;
+}
+/* Remove default Angular Material line under header */
+table.full-width-table tr.mat-header-row {
+  border-bottom: none !important;
+}
+/* Row separators */
+table.full-width-table tr:not(:last-child) td {
+  border-bottom: 1px solid #e9ecef;
+}
+table.full-width-table tbody tr:hover {
+  background-color: #f1f3f5;
+}
+
+.user-cell {
+  display: flex;
+  align-items: center;
+}
+.user-id {
+  width: 32px;
+  height: 32px;
+  background: #e0e0e0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  margin-right: 0.75rem;
+}
+
+.user-info .username {
+  font-weight: 600;
+  color: #333;
+}
+.user-info .email {
+  font-size: 0.85rem;
+  color: #777;
+}
+
+.role-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.role-badge.user {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+.role-badge.superuser {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.stat-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #4285F4;
+}
+
+/* action buttons */
+.action-icon {
+  background: transparent;
+  border: none;
+  padding: 0.25rem;
+  margin-right: 0.5rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+  vertical-align: middle;
+}
+.action-icon svg {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+}
+.action-icon.edit {
+  color: #4361ee;
+}
+.action-icon.delete {
+  color: #ee4361;
+}
+.action-icon:hover {
+  background: rgba(0,0,0,0.05);
+}
+

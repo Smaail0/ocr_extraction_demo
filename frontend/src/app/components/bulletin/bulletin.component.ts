@@ -27,20 +27,16 @@ export class BulletinComponent implements OnInit {
   }
   
   formData = {
-    // page-1 / insured
-    id:                null as number|null,
+    id:                null as number | null,
     prenom:            '',
     nom:               '',
     adresse:           '',
     codePostal:        '',
     refDossier:        '',
     identifiantUnique: '',
-    
     cnss:              false,
     cnrps:             false,
     convbi:            false,
-    
-    // page-1 / patient
     assureSocial:      false,
     conjoint:          false,
     enfant:            false,
@@ -50,31 +46,22 @@ export class BulletinComponent implements OnInit {
     dateNaissance:     '',
     numTel:            '',
     nomPrenomMalade:   '',
-    
-    // 12-box ID splitter
     identifiant:       Array(12).fill(''),
-    
-    // page-1 left tables
-    consultations:      [] as TableRow[],
-    protheses:          [] as TableRow[],
-    
-    // page-2 checks & fields
-    apci:                false,
-    mo:                  false,
-    hosp:                false,
-    grossesse:           false,
-    codeApci:            '',
-    dateAccouchement:    '' as string| null,
-    
-    // page-2 tables
-    visites:            [] as TableRow[],
-    actesMedicaux:      [] as TableRow[],
-    actesParam:         [] as TableRow[],
-    biologie:           [] as TableRow[],
-    hospitals:          [] as TableRow[],
-    pharmacie:          [] as TableRow[],
-
-    patientType:         'self',
+    consultations:     [] as TableRow[],
+    protheses:         [] as TableRow[],
+    visites:           [] as TableRow[],
+    actesMedicaux:     [] as TableRow[],
+    actesParam:        [] as TableRow[],
+    biologie:          [] as TableRow[],
+    hospitals:         [] as TableRow[],
+    pharmacie:         [] as TableRow[],
+    apci:              false,
+    mo:                false,
+    hosp:              false,
+    grossesse:         false,
+    codeApci:          '',
+    dateAccouchement:  '' as string | null,
+    patientType:       'self',
   };
 
   identifiant: string[] = Array(12).fill('');
@@ -93,83 +80,73 @@ export class BulletinComponent implements OnInit {
     }
   }
 
-  private populateForm(parsed: any): void {
-    // 1) clear any previous banner
+  private populateForm(src: any): void {
     this.showStatusAlert = false;
-  
-    // 2) alias
-    const src = parsed || {};
-  
-    // 3) rebuild formData (everything except the identifiant 12-box)
+    const s = src || {};
+
+    // copy all scalar fields
     this.formData = {
       ...this.formData,
-  
-      // simple fields
-      prenom:            src.prenom             || '',
-      nom:               src.nom                || '',
-      adresse:           src.adresse            || '',
-      codePostal:        src.codePostal         || '',
-      refDossier:        src.header?.dossierId  || src.refDossier      || '',
-      identifiantUnique: src.identifiantUnique  || '',
-      cnss:              !!src.cnss,
-      cnrps:             !!src.cnrps,
-      convbi:            !!src.convbi,
-      assureSocial:      !!src.assureSocial,
-      conjoint:          !!src.conjoint,
-      enfant:            !!src.enfant,
-      ascendant:         !!src.ascendant,
-      prenomMalade:      src.prenomMalade       || '',
-      nomMalade:         src.nomMalade          || '',
-      dateNaissance:     src.dateNaissance      || '',
-      nomPrenomMalade:   src.nomPrenomMalade    || '',
-  
-      // ── remap each table into exactly the keys your template expects ──
-      consultations: this.mapRows(src.consultationsDentaires    || [], [
+      id:                s.id ?? null,
+      prenom:            s.prenom            || '',
+      nom:               s.nom               || '',
+      adresse:           s.adresse           || '',
+      codePostal:        s.codePostal        || '',
+      refDossier:        s.header?.dossierId || s.refDossier    || '',
+      identifiantUnique: s.identifiantUnique || '',
+      cnss:              !!s.cnss,
+      cnrps:             !!s.cnrps,
+      convbi:            !!s.convbi,
+      assureSocial:      !!s.assureSocial,
+      conjoint:          !!s.conjoint,
+      enfant:            !!s.enfant,
+      ascendant:         !!s.ascendant,
+      prenomMalade:      s.prenomMalade      || '',
+      nomMalade:         s.nomMalade         || '',
+      dateNaissance:     s.dateNaissance     || '',
+      nomPrenomMalade:   s.nomPrenomMalade   || '',
+
+      // remap tables (skip header row with .slice(1))
+      consultations: this.mapRows(s.consultationsDentaires || [], [
         'date','dent','codeActe','cotation','honoraires','codePs','signature'
       ]).slice(1),
-      protheses:     this.mapRows(src.prothesesDentaires        || [], [
+      protheses: this.mapRows(s.prothesesDentaires || [], [
         'date','dents','codeActe','cotation','honoraires','codePs','signature'
       ]).slice(1),
-      visites:       this.mapRows(src.consultationsVisites      || [], [
+      visites: this.mapRows(s.consultationsVisites || [], [
         'date','designation','honoraires','codePs','signature'
       ]).slice(1),
-      actesMedicaux: this.mapRows(src.actesMedicaux             || [], [
+      actesMedicaux: this.mapRows(s.actesMedicaux || [], [
         'date','designation','honoraires','codePs','signature'
       ]).slice(1),
-      actesParam:    this.mapRows(src.actesParamed              || [], [
+      actesParam: this.mapRows(s.actesParamed || [], [
         'date','designation','honoraires','codePs','signature'
       ]).slice(1),
-      biologie:      this.mapRows(src.biologie                  || [], [
+      biologie: this.mapRows(s.biologie || [], [
         'date','montant','codePs','signature'
       ]).slice(1),
-      hospitals:     this.mapRows(src.hospitalisation           || [], [
+      hospitals: this.mapRows(s.hospitalisation || [], [
         'date','codeHosp','forfait','codeClinique','signature'
       ]).slice(1),
-      pharmacie:     this.mapRows(src.pharmacie                 || [], [
+      pharmacie: this.mapRows(s.pharmacie || [], [
         'date','montant','codePs','signature'
       ]).slice(1),
-  
-      // page-2 checks & extras
-      apci:             !!src.apci,
-      mo:               !!src.mo,
-      hosp:             !!src.hospitalisationCheck,
-      grossesse:        !!src.suiviGrossesseCheck,
-      codeApci:         src.codeApci           || '',
-      dateAccouchement: src.datePrevu          || null,
-  
-      // preserve dropdown / radio selection
-      patientType:      this.formData.patientType
+
+      apci:            !!s.apci,
+      mo:              !!s.mo,
+      hosp:            !!s.hospitalisationCheck,
+      grossesse:       !!s.suiviGrossesseCheck,
+      codeApci:        s.codeApci          || '',
+      dateAccouchement: s.datePrevu        || null,
+
+      patientType:     this.formData.patientType
     };
-  
-    // 4) split out the 12-box identifiant
-    this.identifiant = Array.from(
-      { length: 12 },
-      (_, i) => (this.formData.identifiantUnique || '')[i] || ''
+
+    // split the 12-box ID
+    this.formData.identifiant = Array.from({ length: 12 }, (_, i) =>
+      (this.formData.identifiantUnique || '')[i] || ''
     );
-  
-    // 5) auto‐hide the “saved” banner
-    setTimeout(() => this.showStatusAlert = false, 3_000);
-  }  
+  }
 
   /** Only one patient type allowed, and only in edit mode */
   setPatientType(type: 'assureSocial' | 'conjoint' | 'enfant' | 'ascendant'): void {
@@ -191,25 +168,21 @@ export class BulletinComponent implements OnInit {
   }
 
   saveChanges(): void {
-    // 1) leave edit mode & show the “changes saved” banner
-    this.isEditMode      = false;
+    this.isEditMode = false;
     this.showStatusAlert = true;
-  
-    // 2) build a payload matching your Pydantic model exactly
+
+    // build payload, including `id` so Pydantic knows when to PUT vs POST
     const payload = {
-      // ○ simple scalar fields
-      prenom:            this.formData.prenom,
-      nom:               this.formData.nom,
-      adresse:           this.formData.adresse,
-      codePostal:        this.formData.codePostal,
-      refDossier:        this.formData.refDossier,
-      identifiantUnique: this.identifiant.join(''),
-  
-      cnss:              this.formData.cnss,
-      cnrps:             this.formData.cnrps,
-      convbi:            this.formData.convbi,
-  
-      // ○ the eight JSON table columns
+      id:                 this.formData.id,
+      prenom:             this.formData.prenom,
+      nom:                this.formData.nom,
+      adresse:            this.formData.adresse,
+      codePostal:         this.formData.codePostal,
+      refDossier:         this.formData.refDossier,
+      identifiantUnique:  this.formData.identifiant.join(''),
+      cnss:               this.formData.cnss,
+      cnrps:              this.formData.cnrps,
+      convbi:             this.formData.convbi,
       consultationsDentaires: this.formData.consultations,
       prothesesDentaires:     this.formData.protheses,
       consultationsVisites:   this.formData.visites,
@@ -218,26 +191,21 @@ export class BulletinComponent implements OnInit {
       biologie:               this.formData.biologie,
       hospitalisation:        this.formData.hospitals,
       pharmacie:              this.formData.pharmacie,
-  
-      // ○ healthcare-professional section
-      apci:                   this.formData.apci,
-      mo:                     this.formData.mo,
-      hosp:                   this.formData.hosp,
-      grossesse:              this.formData.grossesse,
-      codeApci:               this.formData.codeApci,
-      dateAccouchement:       this.formData.dateAccouchement,
-  
-      // ○ patient type & patient info
-      assureSocial:           this.formData.assureSocial,
-      conjoint:               this.formData.conjoint,
-      enfant:                 this.formData.enfant,
-      ascendant:              this.formData.ascendant,
-  
-      prenomMalade:           this.formData.prenomMalade,
-      nomMalade:              this.formData.nomMalade,
-      dateNaissance:          this.formData.dateNaissance,
-      numTel:                 this.formData.numTel,
-      nomPrenomMalade:        this.formData.nomPrenomMalade
+      apci:               this.formData.apci,
+      mo:                 this.formData.mo,
+      hosp:               this.formData.hosp,
+      grossesse:          this.formData.grossesse,
+      codeApci:           this.formData.codeApci,
+      dateAccouchement:   this.formData.dateAccouchement,
+      assureSocial:       this.formData.assureSocial,
+      conjoint:           this.formData.conjoint,
+      enfant:             this.formData.enfant,
+      ascendant:          this.formData.ascendant,
+      prenomMalade:       this.formData.prenomMalade,
+      nomMalade:          this.formData.nomMalade,
+      dateNaissance:      this.formData.dateNaissance,
+      numTel:             this.formData.numTel,
+      nomPrenomMalade:    this.formData.nomPrenomMalade
     };
   
     // 3) send it up

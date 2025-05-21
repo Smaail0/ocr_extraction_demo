@@ -240,8 +240,7 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
             tmp_path = Path(tmp.name)
 
         # 2) call Azure
-        model_id = os.getenv("ORDONNANCE_MODEL_ID")
-        print(f"Using model ID: {model_id}")
+        model_id = os.getenv("BULLETIN_MODEL_ID")
         result   = analyze_document(tmp_path, model_id=model_id, pages=None)
         doc      = result.documents[0]
         f        = doc.fields
@@ -316,23 +315,29 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
 
         # ── 8) assemble final dict ─────────────────────────────────────
         return {
-            "header": {
-                "documentType": "bulletin_de_soin",
-                "dossierId":    dossier_id
-            },
-
-            # assured info
-            "prenom":            prenom,
-            "nom":               nom,
-            "adresse":           adresse,
-            "codePostal":        code_po,
-            "refDossier":        dossier_id,
+            "header": {"documentType": "bulletin_de_soin"},
+            "prenom": prenom,
+            "nom": nom,
+            "adresse": adresse,
+            "codePostal": code_po,
+            "refDossier": dossier_id,
             "identifiantUnique": formatted_id,
-            "cnrps":             cnrps_c,
-            "cnss":              cnss_c,
-            "convbi":            conv_c,
-
-            # the eight tables
+            "cnrps": cnrps_c,
+            "cnss": cnss_c,
+            "convbi": conv_c,
+            "prenomMalade": mal_prenom,
+            "nomMalade": mal_nom,
+            "dateNaissance": mal_birth,
+            "numTel": txt("telephone") or "",
+            "assureSocial": assure_soc,
+            "conjoint": chk("conjoint"),
+            "ascendant": chk("ascendant"),
+            "enfant": chk("enfant"),
+            "apci": chk("apci_check"),
+            "mo": chk("mo_check"),
+            "hosp": chk("hospitalisation_check"),
+            "grossesse": chk("suivi_grossesse_check"),
+            # **and**:
             "consultationsDentaires": consultations_dentaires,
             "prothesesDentaires":     protheses_dentaires,
             "consultationsVisites":   consultations_visites,
@@ -341,28 +346,7 @@ def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
             "biologie":               biologie,
             "hospitalisation":        hospitalisation,
             "pharmacie":              pharmacie,
-
-            # extra checks & fields
-            "apci":                    apci_c,
-            "mo":                      mo_c,
-            "hospitalisationCheck":    hosp_req_c,
-            "suiviGrossesseCheck":     suivi_gross_c,
-            "datePrevu":               date_prevu,
-            "nomPrenomMalade":         nom_pr_mal,
-
-            # patient info
-            "assureSocial":            assure_soc,
-            "conjoint":                conjoint_c,
-            "ascendant":               ascendant_c,
-            "enfant":                  chk("enfant"),
-            "prenomMalade":            mal_prenom,
-            "nomMalade":               mal_nom,
-            "dateNaissance":           mal_birth,
-
-            # optional
-            "numTel":                  txt("telephone") or "",
-            "patientType":             None
-        }
+            }
 
     finally:
         if tmp_path and tmp_path.exists():
@@ -395,6 +379,16 @@ def has_signature_coordinates(result) -> bool:
         return False
     bounding_regions = getattr(sig_field, "bounding_regions", None)
     return bool(bounding_regions and len(bounding_regions) > 0)
+
+def _fmt_fr(n: float, decimals: int = 3) -> str:
+    # US‐style group + fixed decimals, e.g. "7,370.000"
+    s = f"{n:,.{decimals}f}"
+    # split integer vs. fraction
+    int_part, frac_part = s.split('.')
+    # replace US thousands comma with NBSP
+    int_part = int_part.replace(',', '\u00A0')
+    # swap decimal point to comma
+    return f"{int_part},{frac_part}"
 
 def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
     import traceback
@@ -437,6 +431,7 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             tables.append((tbl.column_count, mat))
 
         items_mat = next((m for c, m in tables if c >= 8), None)
+        legacy_mat = next((m for c, m in tables if c == 5), None)
         meta_mat  = next((m for c, m in tables if c == 2), None)
 
         # 4) parse the 8-col items (and footer)
@@ -458,6 +453,43 @@ def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
             footer = items_mat[-1]
             if footer and footer[0].lower().startswith("total"):
                 total = footer[0].strip()
+                
+        if not items and legacy_mat and len(legacy_mat) > 1:
+            for row in legacy_mat[1:]:
+                a, b, c, d, *rest = (row + [""] * 5)[:5]
+                puv_clean = re.sub(r"[^\d\.,]", "", c.strip())
+                qte_clean = re.sub(r"\D",       "", d.strip())
+                try:
+                    puv_num = float(puv_clean.replace(",", "."))
+                except ValueError:
+                    puv_num = 0.0
+                try:
+                    qte_num = int(qte_clean)
+                except ValueError:
+                    qte_num = 0
+
+                line_total = puv_num * qte_num
+                montant_percu = f"{line_total:,.0f}" if line_total else ""
+
+                items.append({
+                    "codePCT":      a.strip(),
+                    "produit":      b.strip(),
+                    "forme":        "",
+                    "qte":          qte_clean,
+                    "puv":          puv_clean,
+                    "montantPercu": montant_percu,
+                    "nio":          "",
+                    "prLot":        "",
+                })
+
+            # compute total from legacy items
+            total_amount = sum(
+                float(it["montantPercu"]
+                    .replace('\u00A0', '')
+                    .replace(',', ''))
+                for it in items
+            )
+            total = f"{total_amount:,.0f}"
         
         def is_all_blank(lst):
             return bool(lst) and all(not it.get("produit","").strip() for it in lst)

@@ -301,6 +301,15 @@
           </div>
         </div>
 
+        <div
+          *ngIf="!signatureResult && signatureUrl"
+          class="alert alert-warning"
+        >
+          <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+          La découpe de la signature n’est pas toujours fiable à 100 % :
+          merci de vérifier avant de lancer l’analyse.
+        </div>
+
         <!-- Signature -->
         <div *ngIf="signatureUrl" class="signature-container">
           <label class="signature-label">Signature du médecin :</label>
@@ -309,52 +318,84 @@
             alt="Signature du médecin"
             class="signature-img"
           />
-        </div>
-        
-        <!-- Footer Stamp -->
-        <div class="row mb-5">
-          <div class="col-md-4 pharmacy-stamp">
-            <p>
-              <input
-                type="text"
-                class="form-control"
-                [(ngModel)]="prescription.pharmacyName"
-                [readonly]="!isEditMode"
-                placeholder="Nom de Pharmacie"
-              />
-            </p>
-            <p>
-              <input
-                type="text"
-                class="form-control"
-                [(ngModel)]="prescription.pharmacyAddress"
-                [readonly]="!isEditMode"
-                placeholder="Adresse de Pharmacie"
-              />
-            </p>
-            <p>
-              <input
-                type="text"
-                class="form-control"
-                [(ngModel)]="prescription.pharmacyContact"
-                [readonly]="!isEditMode"
-                placeholder="Tél/Fax"
-              />
-            </p>
-            <p>
-              <input
-                type="text"
-                class="form-control"
-                [(ngModel)]="prescription.pharmacyFiscalId"
-                [readonly]="!isEditMode"
-                placeholder="Matricule Fiscale"
-              />
-            </p>
+
+          <!-- Hint when no ID yet -->
+          <div
+            *ngIf="!prescription.id"
+            class="text-muted small mb-2 d-flex align-items-center"
+          >
+            <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+            Vérifiez et enregistrez d’abord avant d’analyser.
+          </div>
+
+          <div class="signature-check">
+            <button
+              class="btn btn-primary btn-sm"
+              (click)="analyseSignature()"
+              [disabled]="signatureLoading || !prescription.id"
+            >
+              {{ signatureLoading ? "Vérification…" : "Vérifier la signature" }}
+            </button>
           </div>
         </div>
 
-        <!-- Action Buttons -->
-        <!-- … -->
+        <!-- results -->
+        <div *ngIf="signatureResult" class="signature-result mt-3">
+          <p>AKAZE score: {{ signatureResult.akaze | number : "1.2-2" }}</p>
+          <p>SSIM score: {{ signatureResult.ssim | number : "1.2-2" }}</p>
+          <p>
+            Signature authentique?
+            <strong
+              [ngClass]="
+                signatureResult.genuine ? 'text-success' : 'text-danger'
+              "
+            >
+              {{ signatureResult.genuine ? "Oui" : "Non" }}
+            </strong>
+          </p>
+        </div>
+      </div>
+
+      <!-- Footer Stamp -->
+      <div class="row mb-5">
+        <div class="col-md-4 pharmacy-stamp">
+          <p>
+            <input
+              type="text"
+              class="form-control"
+              [(ngModel)]="prescription.pharmacyName"
+              [readonly]="!isEditMode"
+              placeholder="Nom de Pharmacie"
+            />
+          </p>
+          <p>
+            <input
+              type="text"
+              class="form-control"
+              [(ngModel)]="prescription.pharmacyAddress"
+              [readonly]="!isEditMode"
+              placeholder="Adresse de Pharmacie"
+            />
+          </p>
+          <p>
+            <input
+              type="text"
+              class="form-control"
+              [(ngModel)]="prescription.pharmacyContact"
+              [readonly]="!isEditMode"
+              placeholder="Tél/Fax"
+            />
+          </p>
+          <p>
+            <input
+              type="text"
+              class="form-control"
+              [(ngModel)]="prescription.pharmacyFiscalId"
+              [readonly]="!isEditMode"
+              placeholder="Matricule Fiscale"
+            />
+          </p>
+        </div>
       </div>
     </div>
   </div>
