@@ -173,7 +173,6 @@
         </tr>
       </thead>
       <tbody>
-        <!-- Single ngFor loop with template for each courier and its expanded row -->
         <ng-container *ngFor="let courier of filteredCouriers; let i = index">
           <!-- Main courier row -->
           <tr
@@ -213,7 +212,7 @@
               </button>
 
               <button
-                class="btn-icon "
+                class="btn-icon"
                 (click)="toggleRowExpansion(i, $event)"
                 title="Afficher les documents associés"
               >
@@ -243,8 +242,8 @@
                 </svg>
               </button>
               <button
-                class="btn-icon "
-                (click)="toggleRowExpansion(i, $event)"
+                class="btn-icon"
+                (click)="toggleUploadSection(i, $event)"
                 title="Ajouter des documents"
               >
                 <svg
@@ -269,10 +268,12 @@
               <div class="documents-subtable-wrapper">
                 <h4>Documents associés</h4>
 
-                <!-- Documents grid layout -->
+                <!-- Show documents if they exist -->
                 <div
                   class="documents-grid"
-                  *ngIf="getDocuments(courier.id).length > 0"
+                  *ngIf="
+                    getDocuments(courier.id).length > 0 && !showUploadSection[i]
+                  "
                 >
                   <div
                     class="document-card"
@@ -294,7 +295,7 @@
                         />
                       </svg>
                       <svg
-                        *ngIf="doc.type === 'Bulletin'"
+                        *ngIf="doc.type === 'Bulletin de soins'"
                         viewBox="0 0 24 24"
                         fill="currentColor"
                         style="width: 24px; height: 24px"
@@ -396,13 +397,195 @@
                   </div>
                 </div>
 
-                <!-- Empty state -->
+                <!-- Upload section - shown when no documents OR when add button is clicked -->
                 <div
-                  class="no-documents"
-                  *ngIf="getDocuments(courier.id).length === 0"
+                  class="upload-section"
+                  *ngIf="
+                    getDocuments(courier.id).length === 0 ||
+                    showUploadSection[i]
+                  "
                 >
-                  <div class="no-documents-icon">📄</div>
-                  <p>Aucun document disponible pour ce courrier</p>
+                  <!-- Message for no documents -->
+                  <div
+                    class="no-documents-message"
+                    *ngIf="
+                      getDocuments(courier.id).length === 0 &&
+                      !showUploadSection[i]
+                    "
+                  >
+                    <div class="no-documents-icon">📄</div>
+                    <p>Aucun document disponible pour ce courrier</p>
+                  </div>
+
+                  <!-- Upload area -->
+                  <div class="upload-area">
+                    <h5 class="upload-title">Ajouter des documents</h5>
+
+                    <!-- File count indicator -->
+                    <div
+                      class="file-count"
+                      *ngIf="uploadFiles[courier.id]?.length > 0"
+                    >
+                      <span class="text-muted"
+                        >{{ uploadFiles[courier.id]?.length || 0 }}/{{
+                          MAX_FILES
+                        }}
+                        fichiers</span
+                      >
+                    </div>
+
+                    <!-- Drop zone -->
+                    <div
+                      class="upload-drop-area"
+                      [class.active]="isDragOver[courier.id]"
+                      [class.disabled]="!canAddMoreFiles(courier.id)"
+                      (dragover)="onDragOver($event, courier.id)"
+                      (dragleave)="onDragLeave($event, courier.id)"
+                      (drop)="onDrop($event, courier.id)"
+                    >
+                      <svg
+                        class="upload-icon"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+                        ></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                      </svg>
+
+                      <ng-container
+                        *ngIf="canAddMoreFiles(courier.id); else maxReached"
+                      >
+                        <p>Glissez et déposez les fichiers ici ou</p>
+                        <label class="btn btn-outline-primary btn-sm">
+                          Parcourir les Fichiers
+                          <input
+                            type="file"
+                            (change)="onFileSelected($event, courier.id)"
+                            [attr.multiple]="
+                              canAddMoreFiles(courier.id) ? '' : null
+                            "
+                            accept=".jpg,.jpeg,.png,.pdf"
+                            style="display: none"
+                          />
+                        </label>
+                      </ng-container>
+
+                      <ng-template #maxReached>
+                        <p class="text-danger">
+                          Nombre maximum de fichiers atteint ({{ MAX_FILES }})
+                        </p>
+                      </ng-template>
+                    </div>
+
+                    <!-- File requirements -->
+                    <div class="upload-requirements">
+                      <small class="text-muted">
+                        <strong>Exigences:</strong> Maximum
+                        {{ MAX_FILES }} fichiers • Formats acceptés: JPG, PNG,
+                        PDF
+                      </small>
+                    </div>
+
+                    <!-- Selected files list -->
+                    <div
+                      class="selected-files"
+                      *ngIf="uploadFiles[courier.id]?.length > 0"
+                    >
+                      <h6>Fichiers sélectionnés</h6>
+                      <div class="files-list">
+                        <div
+                          class="file-item"
+                          *ngFor="
+                            let file of uploadFiles[courier.id];
+                            let fileIndex = index
+                          "
+                        >
+                          <div class="file-preview">
+                            <img [src]="file.preview" alt="aperçu" />
+                          </div>
+                          <div class="file-info">
+                            <div class="file-name">{{ file.file.name }}</div>
+                            <div class="file-size">
+                              {{ formatFileSize(file.file.size) }}
+                            </div>
+                          </div>
+                          <div class="file-status">
+                            <ng-container [ngSwitch]="file.status">
+                              <div
+                                *ngSwitchCase="'uploading'"
+                                class="spinner-sm"
+                              ></div>
+                              <svg
+                                *ngSwitchCase="'success'"
+                                class="status-icon success"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                              >
+                                <path
+                                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
+                                />
+                              </svg>
+                              <svg
+                                *ngSwitchCase="'error'"
+                                class="status-icon error"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                              >
+                                <path
+                                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+                                />
+                              </svg>
+                            </ng-container>
+                          </div>
+                          <button
+                            class="file-remove"
+                            (click)="removeFile(courier.id, fileIndex)"
+                            title="Supprimer le fichier"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <line x1="18" y1="6" x2="6" y2="18"></line>
+                              <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Upload actions -->
+                    <div
+                      class="upload-actions"
+                      *ngIf="uploadFiles[courier.id]?.length > 0"
+                    >
+                      <button
+                        class="btn btn-secondary btn-sm"
+                        (click)="onCancelUpload(i, $event)"
+                        type="button"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        class="btn btn-primary btn-sm"
+                        (click)="uploadFiles_forCourier(courier.id)"
+                        [disabled]="!hasFilesToUpload(courier.id)"
+                        type="button"
+                      >
+                        Télécharger ({{
+                          uploadFiles[courier.id]?.length
+                        }}
+                        fichiers)
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </td>
@@ -410,13 +593,6 @@
         </ng-container>
 
         <!-- No couriers message -->
-        <tr *ngIf="filteredCouriers.length === 0">
-          <td colspan="7" class="no-results">
-            Aucun courrier ne correspond aux critères de recherche
-          </td>
-        </tr>
-
-        <!-- Upload New Documents -->
         <tr *ngIf="filteredCouriers.length === 0">
           <td colspan="7" class="no-results">
             Aucun courrier ne correspond aux critères de recherche

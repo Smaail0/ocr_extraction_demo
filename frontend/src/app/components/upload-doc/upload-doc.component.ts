@@ -50,7 +50,7 @@ export class UploadDocComponent {
   isUploading = false;
   serverError: string | null = null;
 
-  readonly MAX_FILES = 2;
+  readonly MAX_FILES = 5;
   readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
   constructor(

@@ -84,17 +84,9 @@ async def parse_document(file: UploadFile = File(...)):
     return {"header": {"documentType": form_key}, **parsed}
 
 
-UPLOAD_DIR = "files"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
-
-
 models.Base.metadata.create_all(bind=engine)
 UPLOAD_DIR = "files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
 
 def get_db():
     db = SessionLocal()
@@ -102,7 +94,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 
 
 def detect_file_type_from_filename(filename: str) -> str:
@@ -141,7 +132,6 @@ async def upload_courrier(
 
 
     for upload in files:
-        # Générer un nom unique pour le disque
         ts        = datetime.utcnow().isoformat()
         safe_ts   = re.sub(r"[:.]", "-", ts)
         stored    = f"{safe_ts}_{upload.filename}"
@@ -166,6 +156,73 @@ async def upload_courrier(
     db.refresh(db_courier)
 
     return db_courier
+
+
+@app.post(
+    "/courriers/{courier_id}/upload/",
+    response_model=schemas.UploadResponse,
+    summary="Upload one or more files to a specific courier",
+)
+async def upload_files_to_courier(
+    courier_id: int,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    # 1. Fetch courier
+    courier = db.query(models.Courier).filter(models.Courier.id == courier_id).first()
+    if not courier:
+        raise HTTPException(status_code=404, detail=f"Courier {courier_id} not found")
+
+    # 2. Build & create the courier-specific subdirectory under your global UPLOAD_DIR
+    courier_dir = os.path.join(UPLOAD_DIR, str(courier_id))
+    os.makedirs(courier_dir, exist_ok=True)
+
+    uploaded_infos: List[schemas.UploadedFileInfo] = []
+
+    # 3. Loop through each incoming file…
+    for upload in files:
+        # 3a. Generate a timestamped filename
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        _, ext = os.path.splitext(upload.filename)
+        stored_name = f"{timestamp}{ext}"
+        file_path = os.path.join(courier_dir, stored_name)
+
+        # 3b. Save to disk
+        with open(file_path, "wb") as out_f:
+            shutil.copyfileobj(upload.file, out_f)
+
+        # 3c. Detect type and insert DB record
+        file_type = detect_file_type_from_filename(upload.filename)
+        db_file = models.FileUpload(
+            filename=stored_name,
+            original_name=upload.filename,
+            path=file_path,
+            type=file_type,
+            uploaded_at=datetime.utcnow(),
+            courier_id=courier_id,
+        )
+        db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
+
+        # 3d. Collect for response
+        uploaded_infos.append(
+            schemas.UploadedFileInfo(
+                id=db_file.id,
+                filename=db_file.filename,
+                original_name=db_file.original_name,
+                path=db_file.path,
+                type=db_file.type,
+                uploaded_at=db_file.uploaded_at,
+            )
+        )
+
+    # 4. Return a structured response
+    return schemas.UploadResponse(
+        message=f"Successfully uploaded {len(uploaded_infos)} file(s) to courier {courier_id}.",
+        uploaded_files=uploaded_infos,
+    )
+
 
 @app.post("/api/bulletin/", response_model=schemas.Bulletin)
 def create_bulletin(bulletin: schemas.BulletinCreate, file_id: Optional[int] = None, db: Session = Depends(get_db)):
