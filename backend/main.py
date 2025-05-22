@@ -126,6 +126,7 @@ async def upload_courrier(
         nom_complet_beneficiaire=nom_complet_beneficiaire,
         created_at=datetime.utcnow()
     )
+    
     db.add(db_courier)
     db.commit()
     db.refresh(db_courier)
@@ -159,7 +160,75 @@ async def upload_courrier(
 
 
 @app.post(
-    "/courriers/{courier_id}/upload/",
+    "/api/courier/{matricule}/upload/",
+    response_model=schemas.UploadResponse,
+)
+async def upload_courier_to_matricule(
+    matricule: str,
+    files: List[UploadFile] = File(...),
+    nom_complet_adherent: str     = Form(...),
+    nom_complet_beneficiaire: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    # 1. Fetch courier
+    courier = db.query(models.Courier).filter(models.Courier.matricule == matricule).first()
+    if not courier:
+        raise HTTPException(status_code=404, detail=f"Courier {matricule} not found")
+
+    # 2. Build & create the courier-specific subdirectory under your global UPLOAD_DIR
+    courier_dir = os.path.join(UPLOAD_DIR, str(courier.id))
+    os.makedirs(courier_dir, exist_ok=True)
+
+    uploaded_infos: List[schemas.UploadedFileInfo] = []
+
+    # 3. Loop through each incoming file…
+    for upload in files:
+        # 3a. Generate a timestamped filename
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        _, ext = os.path.splitext(upload.filename)
+        stored_name = f"{timestamp}{ext}"
+        file_path = os.path.join(courier_dir, stored_name)
+
+        # 3b. Save to disk
+        with open(file_path, "wb") as out_f:
+            shutil.copyfileobj(upload.file, out_f)
+
+        # 3c. Detect type and insert DB record
+        file_type = detect_file_type_from_filename(upload.filename)
+        db_file = models.FileUpload(
+            filename=stored_name,
+            original_name=upload.filename,
+            path=file_path,
+            type=file_type,
+            uploaded_at=datetime.utcnow(),
+            courier_id=courier.id,
+        )
+        db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
+
+        # 3d. Collect for response
+        uploaded_infos.append(
+            schemas.UploadedFileInfo(
+                id=db_file.id,
+                filename=db_file.filename,
+                original_name=db_file.original_name,
+                path=db_file.path,
+                type=db_file.type,
+                uploaded_at=db_file.uploaded_at,
+            )
+        )
+
+    # 4. Return a structured response
+    return schemas.UploadResponse(
+        message=f"Successfully uploaded {len(uploaded_infos)} file(s) to courier {matricule}.",
+        uploaded_files=uploaded_infos,
+    )
+    
+
+    
+@app.post(
+    "api/courrier/{courier_id}/upload/",
     response_model=schemas.UploadResponse,
     summary="Upload one or more files to a specific courier",
 )
@@ -458,6 +527,31 @@ async def get_latest_courrier(db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(500, detail="Failed to fetch latest courier")
 
+
+
+
+    
+@app.get("/api/courrier/{matricule}", response_model=schemas.Courier)
+async def get_courrier_by_matricule(
+    matricule: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch a specific courier by its matricule.
+    """
+    try:
+        courrier = (
+            db.query(models.Courier)
+            .options(joinedload(models.Courier.files))
+            .filter(models.Courier.matricule == matricule)
+            .first())
+        if not courrier:
+            raise HTTPException(status_code=404, detail="Courier not found")
+        return courrier
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to fetch courier")
+
 @app.put("/api/bulletin/{bulletin_id}", response_model=schemas.Bulletin)
 def update_bulletin(
     bulletin_id: int,
@@ -528,7 +622,72 @@ async def get_courrier(courier_id: int, db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to fetch courier")
 
+# Add these endpoints to your main.py file
 
+@app.get("/api/courrier/search/matricule")
+async def search_couriers_by_matricule(
+    q: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Search couriers by matricule - returns partial matches
+    """
+    try:
+        couriers = (
+            db.query(models.Courier)
+            .filter(models.Courier.matricule.ilike(f"%{q}%"))
+            .limit(10)  # Limit results to prevent overwhelming the UI
+            .all()
+        )
+        
+        results = []
+        for courier in couriers:
+            results.append({
+                "id": courier.id,
+                "matricule": courier.matricule,
+                "nom_complet_adherent": courier.nom_complet_adherent,
+                "nom_complet_beneficiaire": courier.nom_complet_beneficiaire
+            })
+        
+        return results
+        
+    except Exception as e:
+        print(f"Error searching couriers by matricule: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Search failed")
+
+
+@app.get("/api/courrier/search/adherent")
+async def search_couriers_by_adherent(
+    q: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Search couriers by adherent name - returns partial matches
+    """
+    try:
+        couriers = (
+            db.query(models.Courier)
+            .filter(models.Courier.nom_complet_adherent.ilike(f"%{q}%"))
+            .limit(10)  # Limit results to prevent overwhelming the UI
+            .all()
+        )
+        
+        results = []
+        for courier in couriers:
+            results.append({
+                "id": courier.id,
+                "matricule": courier.matricule,
+                "nom_complet_adherent": courier.nom_complet_adherent,
+                "nom_complet_beneficiaire": courier.nom_complet_beneficiaire
+            })
+        
+        return results
+        
+    except Exception as e:
+        print(f"Error searching couriers by adherent: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Search failed")
 
 @app.delete("/api/files/{document_id}")
 def delete_file(document_id: int, db: Session = Depends(get_db)):

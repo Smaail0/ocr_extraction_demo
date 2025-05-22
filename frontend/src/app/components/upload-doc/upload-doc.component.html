@@ -13,7 +13,6 @@
       </div>
 
       <div class="card-body">
-        <!-- Form wrapper with template reference -->
         <form #uploadForm="ngForm">
           <!-- Section de Téléchargement -->
           <div class="mb-4">
@@ -27,6 +26,7 @@
             <p class="text-muted small mb-2" align="center">
               Veuillez télécharger uniquement les documents nécessaires à l'analyse.
             </p>
+            
             <!-- Zone de dépôt -->
             <div
               id="drop-area"
@@ -73,10 +73,12 @@
               </ul>
             </div>
 
-            <!-- Enhanced form inputs with required validation -->
+            <!-- Enhanced form inputs with autocomplete -->
             <div class="patient-info-section my-4 p-3 border rounded bg-light">
               <h6 class="mb-3 border-bottom pb-2">Informations du courier</h6>
-              <div class="form-group row mb-3">
+              
+              <!-- Matricule with autocomplete -->
+              <div class="form-group row mb-3 position-relative">
                 <label for="matricule" class="col-sm-4 col-form-label"
                   >Matricule : <span class="text-danger">*</span></label
                 >
@@ -87,6 +89,9 @@
                     id="matricule"
                     class="form-control form-control-sm"
                     [(ngModel)]="formData.mat"
+                    (input)="onMatriculeInput($event)"
+                    (focus)="onInputFocus('matricule')"
+                    (blur)="onInputBlur('matricule')"
                     placeholder="Entrez le matricule de l'adhérent"
                     required
                     #matInput="ngModel"
@@ -95,7 +100,32 @@
                         matInput.invalid &&
                         (matInput.dirty || matInput.touched || formSubmitted)
                     }"
+                    autocomplete="off"
                   />
+                  
+                  <!-- Matricule Suggestions Dropdown -->
+                  <div
+                    *ngIf="showMatriculeSuggestions && matriculeSuggestions.length > 0"
+                    class="autocomplete-dropdown"
+                  >
+                    <div
+                      *ngFor="let suggestion of matriculeSuggestions"
+                      class="autocomplete-item"
+                      (mousedown)="selectMatriculeSuggestion(suggestion, $event)"
+                    >
+                      <div class="fw-bold">{{ suggestion.matricule }}</div>
+                      <div class="text-muted small">{{ suggestion.nom_complet_adherent }}</div>
+                    </div>
+                  </div>
+
+                  <!-- Loading indicator -->
+                  <div
+                    *ngIf="isLoadingSuggestions && formData.mat.length >= 2"
+                    class="position-absolute top-50 end-0 translate-middle-y me-2"
+                  >
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                  </div>
+
                   <div
                     *ngIf="
                       matInput.invalid &&
@@ -108,7 +138,8 @@
                 </div>
               </div>
 
-              <div class="form-group row mb-3">
+              <!-- Nom Adhérent with autocomplete -->
+              <div class="form-group row mb-3 position-relative">
                 <label for="nom-adherent" class="col-sm-4 col-form-label"
                   >Nom et Prénom Adhérent:
                   <span class="text-danger">*</span></label
@@ -120,6 +151,9 @@
                     id="nom-adherent"
                     class="form-control form-control-sm"
                     [(ngModel)]="formData.nomAdhe"
+                    (input)="onAdherentInput($event)"
+                    (focus)="onInputFocus('adherent')"
+                    (blur)="onInputBlur('adherent')"
                     placeholder="Entrez le nom complet de l'adhérent"
                     required
                     #nomAdheInput="ngModel"
@@ -130,7 +164,24 @@
                           nomAdheInput.touched ||
                           formSubmitted)
                     }"
+                    autocomplete="off"
                   />
+
+                  <!-- Adherent Suggestions Dropdown -->
+                  <div
+                    *ngIf="showAdherentSuggestions && adherentSuggestions.length > 0"
+                    class="autocomplete-dropdown"
+                  >
+                    <div
+                      *ngFor="let suggestion of adherentSuggestions"
+                      class="autocomplete-item"
+                      (mousedown)="selectAdherentSuggestion(suggestion, $event)"
+                    >
+                      <div class="fw-bold">{{ suggestion.nom_complet_adherent }}</div>
+                      <div class="text-muted small">Matricule: {{ suggestion.matricule }}</div>
+                    </div>
+                  </div>
+
                   <div
                     *ngIf="
                       nomAdheInput.invalid &&
@@ -145,6 +196,7 @@
                 </div>
               </div>
 
+              <!-- Nom Bénéficiaire -->
               <div class="form-group row mb-3">
                 <label for="nom-benef" class="col-sm-4 col-form-label"
                   >Nom et Prénom Bénéficiaire:
@@ -157,6 +209,7 @@
                     id="nom-benef"
                     class="form-control form-control-sm"
                     [(ngModel)]="formData.nomBenef"
+                    (focus)="onInputFocus('beneficiaire')"
                     placeholder="Entrez le nom complet du bénéficiaire"
                     required
                     #nomBenefInput="ngModel"
@@ -182,13 +235,21 @@
                 </div>
               </div>
 
+              <!-- Selected Courier Info -->
+              <div *ngIf="selectedCourier" class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>Courier existant sélectionné:</strong><br>
+                Matricule: {{ selectedCourier.matricule }}<br>
+                Adhérent: {{ selectedCourier.nom_complet_adherent }}<br>
+                Les fichiers seront ajoutés à ce courier existant.
+              </div>
+
               <div class="text-muted small">
                 <span class="text-danger">*</span> Champs obligatoires
               </div>
             </div>
 
             <!-- File upload validation message -->
-
             <div
               *ngIf="uploadFiles.length === 0 && formSubmitted"
               class="alert alert-danger"
@@ -196,7 +257,7 @@
               Veuillez télécharger au moins un fichier.
             </div>
 
-            <!-- Fichiers Sélectionnés (avec réorganisation par glisser-déposer, aperçu, statut par fichier) -->
+            <!-- Fichiers Sélectionnés -->
             <div *ngIf="uploadFiles.length > 0">
               <h6>Fichiers Sélectionnés</h6>
               <ul
@@ -213,7 +274,6 @@
                     <span cdkDragHandle class="drag-handle me-2">
                       <i class="bi bi-grip-vertical"></i>
                     </span>
-                    <!-- Avec cette ligne -->
                     <img
                       [src]="uf.thumbnails?.[0] || uf.preview"
                       alt="aperçu"
@@ -230,7 +290,6 @@
                   </div>
 
                   <div class="d-flex align-items-center gap-2">
-                    <!-- spinner / succès / erreur par fichier -->
                     <ng-container [ngSwitch]="uf.status">
                       <div *ngSwitchCase="'uploading'">
                         <div
@@ -248,7 +307,6 @@
                       ></i>
                     </ng-container>
 
-                    <!-- bouton supprimer -->
                     <button
                       class="btn btn-sm btn-outline-danger"
                       (click)="removeFile(i)"
@@ -271,7 +329,9 @@
         </button>
 
         <button class="btn btn-primary" (click)="uploadDocuments()">
-          <span *ngIf="!isUploading">Analyser</span>
+          <span *ngIf="!isUploading">
+            {{ selectedCourier ? 'Ajouter à ce courier' : 'Analyser' }}
+          </span>
           <span *ngIf="isUploading">Extraction en cours...</span>
         </button>
       </div>

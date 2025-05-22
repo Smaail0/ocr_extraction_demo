@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, Output, ViewChild } from '@angular/core
 import { CommonModule } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router } from '@angular/router';
-import { forkJoin, of } from 'rxjs';
+import { forkJoin, of, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 import { DocumentsService } from '../../services/documents.service';
 import {
@@ -13,7 +13,6 @@ import {
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
 import { MatDialogRef } from '@angular/material/dialog';
 
-
 interface UploadFile {
   file: File;
   id: string;
@@ -21,6 +20,13 @@ interface UploadFile {
   thumbnails?: string[];
   uploadProgress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
+}
+
+interface CourierSuggestion {
+  matricule: string;
+  nom_complet_adherent: string;
+  nom_complet_beneficiaire: string;
+  id: number;
 }
 
 @Component({
@@ -50,6 +56,14 @@ export class UploadDocComponent {
   isUploading = false;
   serverError: string | null = null;
 
+  // Autocomplete properties
+  matriculeSuggestions: CourierSuggestion[] = [];
+  adherentSuggestions: CourierSuggestion[] = [];
+  showMatriculeSuggestions = false;
+  showAdherentSuggestions = false;
+  selectedCourier: CourierSuggestion | null = null;
+  isLoadingSuggestions = false;
+
   readonly MAX_FILES = 5;
   readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
@@ -77,6 +91,115 @@ export class UploadDocComponent {
     );
   }
 
+  // Autocomplete methods
+  onMatriculeInput(event: any) {
+    const value = event.target.value.trim();
+    if (value.length >= 2) {
+      this.searchByMatricule(value);
+    } else {
+      this.showMatriculeSuggestions = false;
+      this.matriculeSuggestions = [];
+    }
+  }
+
+  onAdherentInput(event: any) {
+    const value = event.target.value.trim();
+    if (value.length >= 2) {
+      this.searchByAdherent(value);
+    } else {
+      this.showAdherentSuggestions = false;
+      this.adherentSuggestions = [];
+    }
+  }
+
+  private searchByMatricule(query: string) {
+    this.isLoadingSuggestions = true;
+    this.documentsService.searchCouriersByMatricule(query).subscribe({
+      next: (results: CourierSuggestion[]) => {
+        this.matriculeSuggestions = results;
+        this.showMatriculeSuggestions = results.length > 0;
+        this.isLoadingSuggestions = false;
+      },
+      error: (err) => {
+        console.error('Error searching matricules:', err);
+        this.isLoadingSuggestions = false;
+        this.showMatriculeSuggestions = false;
+      }
+    });
+  }
+
+  private searchByAdherent(query: string) {
+    this.isLoadingSuggestions = true;
+    this.documentsService.searchCouriersByAdherent(query).subscribe({
+      next: (results: CourierSuggestion[]) => {
+        this.adherentSuggestions = results;
+        this.showAdherentSuggestions = results.length > 0;
+        this.isLoadingSuggestions = false;
+      },
+      error: (err) => {
+        console.error('Error searching adherents:', err);
+        this.isLoadingSuggestions = false;
+        this.showAdherentSuggestions = false;
+      }
+    });
+  }
+
+  selectMatriculeSuggestion(suggestion: CourierSuggestion, event?: Event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    this.selectedCourier = suggestion;
+    this.formData.mat = suggestion.matricule;
+    this.formData.nomAdhe = suggestion.nom_complet_adherent;
+    this.formData.nomBenef = suggestion.nom_complet_beneficiaire;
+    
+    this.showMatriculeSuggestions = false;
+    this.showAdherentSuggestions = false;
+    this.matriculeSuggestions = [];
+    this.adherentSuggestions = [];
+  }
+
+  selectAdherentSuggestion(suggestion: CourierSuggestion, event?: Event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    this.selectedCourier = suggestion;
+    this.formData.mat = suggestion.matricule;
+    this.formData.nomAdhe = suggestion.nom_complet_adherent;
+    this.formData.nomBenef = suggestion.nom_complet_beneficiaire;
+    
+    this.showMatriculeSuggestions = false;
+    this.showAdherentSuggestions = false;
+    this.matriculeSuggestions = [];
+    this.adherentSuggestions = [];
+  }
+
+  onInputFocus(field: string) {
+    // Hide suggestions when focusing on different fields
+    if (field !== 'matricule') {
+      this.showMatriculeSuggestions = false;
+    }
+    if (field !== 'adherent') {
+      this.showAdherentSuggestions = false;
+    }
+  }
+
+  onInputBlur(field: string) {
+    // Delay hiding suggestions to allow for clicks
+    setTimeout(() => {
+      if (field === 'matricule') {
+        this.showMatriculeSuggestions = false;
+      } else if (field === 'adherent') {
+        this.showAdherentSuggestions = false;
+      }
+    }, 200);
+  }
+
+  // Original methods remain the same
   onDragOver(evt: DragEvent) {
     evt.preventDefault();
     this.isDragOver = true;
@@ -157,7 +280,6 @@ export class UploadDocComponent {
   validateForm(): boolean {
     this.formSubmitted = true;
     
-    // Set touched state for all inputs to trigger validation messages
     Object.keys(this.formData).forEach(key => {
       const control = this.uploadForm?.controls[key];
       if (control) {
@@ -166,12 +288,10 @@ export class UploadDocComponent {
       }
     });
 
-    // Check for empty required fields
     if (!this.formData.mat || !this.formData.nomAdhe || !this.formData.nomBenef) {
       return false;
     }
 
-    // Check if any files are uploaded
     if (this.uploadFiles.length === 0) {
       this.serverError = "Veuillez télécharger au moins un fichier.";
       return false;
@@ -181,13 +301,12 @@ export class UploadDocComponent {
   }
 
   uploadDocuments() {
-    // Validate form before proceeding
     if (!this.validateForm()) return;
     
     this.serverError = null;
     this.isUploading = true;
 
-    // first, detect each file's type (optional step)
+    // First, detect each file's type
     const detectCalls = this.uploadFiles.map((u) => {
       u.status = 'uploading';
       return this.documentsService.parseDocument(u.file).pipe(
@@ -209,39 +328,77 @@ export class UploadDocComponent {
       .subscribe((results) => {
         if (this.serverError) return;
 
-        // build the single FormData payload
-        const fd = new FormData();
-        fd.append('matricule', this.formData.mat);
-        fd.append('nom_complet_adherent', this.formData.nomAdhe);
-        fd.append('nom_complet_beneficiaire', this.formData.nomBenef);
-        this.uploadFiles.forEach((u) =>
-          fd.append('files', u.file, u.file.name)
-        );
-
-        // send to /api/courrier/upload
-        this.documentsService.uploadDocuments(fd).subscribe({
-          next: (courier) => {
-            // mark each file success
-            this.uploadFiles.forEach((u) => {
-              u.uploadProgress = 100;
-              u.status = 'success';
-              this.closeDialog();
-            });
-
-            // if embedded mode, emit raw OCR results for parent
-            if (this.mode === 'embedded') {
-              this.extracted.emit(results.filter((r) => !!r)!);
-            } else {
-              // Navigate to the new route format with courier ID
-              this.router.navigate([`/extracted/${courier.id}`]);
-            }
-          },
-          error: (err) => {
-            this.serverError = `Échec du téléchargement: ${err.status} ${err.statusText}`;
-            this.isUploading = false;
-          },
-        });
+        // Check if matricule exists and upload accordingly
+        if (this.selectedCourier) {
+          // Upload to existing courier using matricule endpoint
+          this.uploadToExistingCourier();
+        } else {
+          // Create new courier
+          this.createNewCourier(results);
+        }
       });
+  }
+
+  private uploadToExistingCourier() {
+    const fd = new FormData();
+    fd.append('nom_complet_adherent', this.formData.nomAdhe);
+    fd.append('nom_complet_beneficiaire', this.formData.nomBenef);
+    this.uploadFiles.forEach((u) =>
+      fd.append('files', u.file, u.file.name)
+    );
+
+    this.documentsService.uploadCourierToMatricule(this.formData.mat, fd).subscribe({
+      next: (response) => {
+        this.uploadFiles.forEach((u) => {
+          u.uploadProgress = 100;
+          u.status = 'success';
+        });
+        
+        this.closeDialog();
+        
+        if (this.mode === 'embedded') {
+          this.extracted.emit(response.uploaded_files);
+        } else {
+          // Navigate to the existing courier
+          this.router.navigate([`/extracted/courier/${this.selectedCourier!.id}`]);
+        }
+      },
+      error: (err) => {
+        this.serverError = `Échec du téléchargement: ${err.status} ${err.statusText}`;
+        this.isUploading = false;
+      },
+    });
+  }
+
+  private createNewCourier(results: any[]) {
+    const fd = new FormData();
+    fd.append('matricule', this.formData.mat);
+    fd.append('nom_complet_adherent', this.formData.nomAdhe);
+    fd.append('nom_complet_beneficiaire', this.formData.nomBenef);
+    this.uploadFiles.forEach((u) =>
+      fd.append('files', u.file, u.file.name)
+    );
+
+    this.documentsService.uploadDocuments(fd).subscribe({
+      next: (courier) => {
+        this.uploadFiles.forEach((u) => {
+          u.uploadProgress = 100;
+          u.status = 'success';
+        });
+        
+        this.closeDialog();
+
+        if (this.mode === 'embedded') {
+          this.extracted.emit(results.filter((r) => !!r)!);
+        } else {
+          this.router.navigate([`/extracted/${courier.id}`]);
+        }
+      },
+      error: (err) => {
+        this.serverError = `Échec du téléchargement: ${err.status} ${err.statusText}`;
+        this.isUploading = false;
+      },
+    });
   }
 
   formatFileSize(size: number): string {
@@ -254,8 +411,7 @@ export class UploadDocComponent {
     return item.id;
   }
 
-closeDialog() {
-  this.dialogRef.close(true); 
-}
-
+  closeDialog() {
+    this.dialogRef.close(true); 
+  }
 }

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse, HttpEventType } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpEventType, HttpParams } from '@angular/common/http';
 import { Observable, throwError, of } from 'rxjs';
 import { Prescription, PrescriptionCreate } from '../models/prescription.model';
 import { catchError, tap, map, filter } from 'rxjs/operators';
@@ -14,6 +14,29 @@ export class DocumentsService {
   private apiUrl = 'http://localhost:8000'; // Base API URL
 
   constructor(private http: HttpClient) {}
+
+  // Autocomplete search methods
+  searchCouriersByMatricule(query: string): Observable<any[]> {
+    const params = new HttpParams().set('q', query);
+    return this.http.get<any[]>(`${this.apiUrl}/api/courrier/search/matricule`, { params }).pipe(
+      tap(res => console.log('Matricule search results:', res)),
+      catchError(error => {
+        console.error('Error searching by matricule:', error);
+        return of([]);
+      })
+    );
+  }
+
+  searchCouriersByAdherent(query: string): Observable<any[]> {
+    const params = new HttpParams().set('q', query);
+    return this.http.get<any[]>(`${this.apiUrl}/api/courrier/search/adherent`, { params }).pipe(
+      tap(res => console.log('Adherent search results:', res)),
+      catchError(error => {
+        console.error('Error searching by adherent:', error);
+        return of([]);
+      })
+    );
+  }
 
   // Get the latest courier
   getLatestCourrier(): Observable<any> {
@@ -39,17 +62,12 @@ export class DocumentsService {
     );
   }
 
-
-
   // Other existing methods...
   getBulletinById(id: number): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/bulletin/${id}`).pipe(
       catchError(this.handleError(`Error fetching bulletin with ID ${id}`))
     );
   }
-
-
-
 
   processBulletin(file: File): Observable<any> {
     const fd = new FormData();
@@ -116,7 +134,6 @@ export class DocumentsService {
     );
   }
 
-
   parseDocument(file: File): Observable<any> {
     const fd = new FormData();
     fd.append('file', file, file.name);
@@ -153,7 +170,6 @@ export class DocumentsService {
       catchError(this.handleError(`Error fetching ordonnance with ID ${id}`))
     );
   }
-
 
   saveOrdonnanceData(data: any): Observable<any> {
     if (data.id) {
@@ -216,7 +232,6 @@ export class DocumentsService {
     );
   }
 
-
   deleteFile(fileId: number): Observable<any> {
     return this.http.delete(`${this.apiUrl}/api/files/${fileId}`).pipe(
       tap(response => console.log('File deleted:', response)),
@@ -227,18 +242,42 @@ export class DocumentsService {
     );
   }
 
+  uploadFilesToCourier(courierId: number ,formData: FormData): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/courrier/${courierId}/upload/`, formData, {
+      reportProgress: true,
+      observe: 'events'
+    }).pipe(
+      catchError(error => {
+        console.error('Upload error:', error);
+        throw error;
+      })
+    );
+  }
 
-uploadFilesToCourier(courierId: number ,formData: FormData): Observable<any> {
-  return this.http.post(`${this.apiUrl}/courriers/${courierId}/upload/`, formData, {
-    reportProgress: true,
-    observe: 'events'
-  }).pipe(
-    catchError(error => {
-      console.error('Upload error:', error);
-      throw error;
-    })
-  );
-}
+  uploadCourierToMatricule(matricule: string, formData: FormData): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/courier/${matricule}/upload/`, formData, {
+      reportProgress: true,
+      observe: 'events'
+    }).pipe(
+      catchError(error => {
+        console.error('Upload error:', error);
+        throw error;
+      })
+    );
+  }
+
+
+  getCourrierByMatricule(matricule: string): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/courier/${matricule}`).pipe(
+      catchError(this.handleError(`Error fetching courrier with matricule ${matricule}`))
+    );
+  }
+
+
+
+
+
+
   
   private handleError(message: string) {
     return (error: HttpErrorResponse) => {
@@ -246,8 +285,4 @@ uploadFilesToCourier(courierId: number ,formData: FormData): Observable<any> {
       return throwError(() => new Error(message));
     };
   }
-
-
-
-
 }
