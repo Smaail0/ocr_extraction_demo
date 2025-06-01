@@ -51,8 +51,10 @@ class Prescription(PrescriptionBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    is_verified: bool
 
     class Config:
+        orm_mode = True
         from_attributes = True
 
 class BulletinBase(BaseModel):
@@ -92,6 +94,7 @@ class BulletinBase(BaseModel):
     codeApci:         Optional[str] = Field(None, alias="codeApci")
     dateAccouchement: Optional[str] = Field(None, alias="dateAccouchement")
     
+    
     class Config:
         allow_population_by_field_name = True
         validate_by_name = True
@@ -107,9 +110,17 @@ class UploadedFileInfo(BaseModel):
     path: str
     type: str
     uploaded_at: datetime
+    size_in_bytes: int
+    
+    prescription_id: Optional[int] = None
+    bulletin_id: Optional[int] = None
+    
+    is_verified: bool
 
     class Config:
         orm_mode = True
+        exclude_none = False
+        allow_population_by_field_name = True
     
 class CourierBase(BaseModel):
     mat_fiscale: str
@@ -123,6 +134,7 @@ class Courier(CourierBase):
     id: int
     created_at: datetime
     files: List[UploadedFileInfo]
+    
 
     class Config:
         orm_mode = True
@@ -131,6 +143,7 @@ class Bulletin(BulletinBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    is_verified: bool
 
     class Config:
         from_attributes = True

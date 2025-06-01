@@ -15,4 +15,9 @@ import { AuthService }          from '../../services/auth.service';
 })
 export class SidebarComponent {
   constructor(public auth: AuthService) {}
+
+    logout() {
+    this.auth.logout();
+  }
+  
 }

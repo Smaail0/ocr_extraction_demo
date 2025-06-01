@@ -18,8 +18,8 @@ load_dotenv()
 DPI      = 300
 
 # Thresholds (tune on your genuine–genuine baseline)
-AKAZE_THRESHOLD = 0.20
-SSIM_THRESHOLD  = 0.50
+AKAZE_THRESHOLD = 0.5
+SSIM_THRESHOLD  = 0.75
 
 client = ""
 

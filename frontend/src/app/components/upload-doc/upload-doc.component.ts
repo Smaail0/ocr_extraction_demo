@@ -1,9 +1,4 @@
-import {
-  Component,
-  EventEmitter,
-  Input,
-  Output,
-} from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -16,6 +11,8 @@ import {
   DragDropModule,
 } from '@angular/cdk/drag-drop';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
+import { Courier, UploadedFileInfo } from '../../models/courier.model';
+import { MatDialogRef } from '@angular/material/dialog';
 
 interface UploadFile {
   file: File;
@@ -51,12 +48,13 @@ export class UploadDocComponent {
   isUploading = false;
   serverError: string | null = null;
 
-  readonly MAX_FILES = 2;
+  readonly MAX_FILES = 1;
   readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
   constructor(
     private documentsService: DocumentsService,
-    private router: Router
+    private router: Router,
+    private dialogRef: MatDialogRef<UploadDocComponent> 
   ) {}
 
   ngOnInit() {
@@ -77,7 +75,6 @@ export class UploadDocComponent {
     );
   }
 
-
   onDragOver(evt: DragEvent) {
     evt.preventDefault();
   }
@@ -93,10 +90,13 @@ export class UploadDocComponent {
   }
   private handleFiles(files: FileList) {
     const slots = this.MAX_FILES - this.uploadFiles.length;
-    Array.from(files).slice(0, slots).forEach(f => {
-      if (!this.ALLOWED_TYPES.includes(f.type)) return alert(`Unsupported: ${f.name}`);
-      this.addFile(f);
-    });
+    Array.from(files)
+      .slice(0, slots)
+      .forEach((f) => {
+        if (!this.ALLOWED_TYPES.includes(f.type))
+          return alert(`Unsupported: ${f.name}`);
+        this.addFile(f);
+      });
   }
   removeFile(i: number) {
     URL.revokeObjectURL(this.uploadFiles[i].preview);
@@ -110,9 +110,10 @@ export class UploadDocComponent {
     const uf: UploadFile = {
       file: f,
       id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-      preview: f.type === 'application/pdf'
-                ? '/PDF_icon.webp'
-                : URL.createObjectURL(f),
+      preview:
+        f.type === 'application/pdf'
+          ? '/PDF_icon.webp'
+          : URL.createObjectURL(f),
       uploadProgress: 0,
       status: 'pending',
     };
@@ -128,94 +129,63 @@ export class UploadDocComponent {
       const page = await pdf.getPage(i);
       const vp = page.getViewport({ scale: 0.2 });
       const canvas = document.createElement('canvas');
-      canvas.width = vp.width; canvas.height = vp.height;
-      await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
+      canvas.width = vp.width;
+      canvas.height = vp.height;
+      await page.render({
+        canvasContext: canvas.getContext('2d')!,
+        viewport: vp,
+      }).promise;
       thumbs.push(canvas.toDataURL('image/png'));
     }
     u.thumbnails = thumbs;
   }
 
-
   uploadDocuments() {
-  if (this.isSubmitDisabled) return;
-  this.serverError = null;
-  this.isUploading = true;
+    if (this.isSubmitDisabled) return;
+    this.serverError = null;
+    this.isUploading = true;
 
-  // first, detect each file’s type (optional step)
-  const detectCalls = this.uploadFiles.map(u => {
-    u.status = 'uploading';
-    return this.documentsService.parseDocument(u.file).pipe(
-      tap(() => u.uploadProgress = 50),
-      catchError(err => {
-        u.status = 'error';
-        this.serverError = err.error?.detail || 'Invalid document';
-        return of(null);
-      })
-    );
-  });
+    this.uploadFiles.forEach((u) => (u.status = 'uploading'));
 
-  forkJoin(detectCalls).pipe(
-    finalize(() => { if (!this.serverError) this.isUploading = false; })
-  ).subscribe(results => {
-    if (this.serverError) return;
-
-    // Map the results to match what ExtractedContainerComponent expects:
-    const mappedResults = results.map(r => {
-      if (!r) return null;
-      return {
-        header: {
-          documentType: r.documentType,
-          filename: r.filename
+    console.time('server‐upload');
+    this.documentsService
+      .uploadCourier(
+        this.formData.matFisc,
+        this.formData.nomAdhe,
+        this.formData.nomBenef,
+        this.uploadFiles.map((u) => u.file),
+        []
+      )
+      .pipe(
+        finalize(() => {
+          this.isUploading = false;
+          console.timeEnd('server‐upload');
+        })
+      )
+      .subscribe({
+        next: (courier) => {
+          this.uploadFiles.forEach((u) => (u.status = 'success'));
+          this.dialogRef.close();
+          this.router.navigate(['/courriers', courier.id, 'extracted']);
         },
-        ...r.parsed // spread parsed content to the root object for easier access
-      };
-    }).filter(r => !!r); // Remove nulls
-
-    // build the single FormData payload
-    const fd = new FormData();
-    fd.append('mat_fiscale', this.formData.matFisc);
-    fd.append('nom_complet_adherent', this.formData.nomAdhe);
-    fd.append('nom_complet_beneficiaire', this.formData.nomBenef);
-    this.uploadFiles.forEach(u => fd.append('files', u.file, u.file.name));
-
-    // send to /api/courrier/upload
-    this.documentsService.uploadDocuments(fd).subscribe({
-      next: courier => {
-        // mark each file success
-        this.uploadFiles.forEach(u => {
-          u.uploadProgress = 100;
-          u.status = 'success';
-        });
-        if (this.mode === 'embedded') {
-          this.extracted.emit(mappedResults);
-        } else {
-          this.router.navigate(['/extracted'], {
-            state: { files: mappedResults, selectedIndex: 0 }
-          });
-        }
-      },
-      error: err => {
-        this.serverError = `Upload failed: ${err.status} ${err.statusText}`;
-        this.isUploading = false;
-      }
-    });
-  });
-}
-
-
-  formatFileSize(size: number): string {
-    if (size < 1024)            return `${size} B`;
-    if (size < 1024 * 1024)     return `${(size/1024).toFixed(1)} KB`;
-    return `${(size/(1024*1024)).toFixed(1)} MB`;
+        error: (err) => {
+          this.uploadFiles.forEach((u) => (u.status = 'error'));
+          this.serverError = err.error?.detail || 'Upload failed';
+        },
+      });
   }
 
- 
+  formatFileSize(size: number): string {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   trackById(_: number, item: UploadFile) {
     return item.id;
   }
 
   closeSection() {
-    this.close.emit(true);
+    this.dialogRef.close(false);
   }
-
 }

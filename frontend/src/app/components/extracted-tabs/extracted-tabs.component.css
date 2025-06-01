@@ -38,16 +38,17 @@
   }
   
   .chrome-tab:hover {
-    background: #5885ff;
+    color: #fff;
+    background: #3f37c9;
   }
   
   /* active tab sits flush with the content area below */
   .chrome-tab.active {
-    background: #ffffff;
+    background: #4361ee;
     border-color: #aaaaaa;
     border-bottom-color: transparent;
     font-weight: 500;
-    color: #222;
+    color: #fff;
     z-index: 1;
   }
   

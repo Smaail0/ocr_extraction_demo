@@ -1,11 +1,24 @@
+// extracted-container.component.ts
 import { Component, OnInit } from '@angular/core';
-import { Router }            from '@angular/router';
-import { CommonModule }      from '@angular/common';
+import { Router } from '@angular/router';
+import { CommonModule } from '@angular/common';
 
 import { ExtractedTabsComponent } from './extracted-tabs.component';
-import { UploadDocComponent }     from '../upload-doc/upload-doc.component';
-import { PrescriptionComponent }  from '../prescription/prescription.component';
-import { BulletinComponent }      from '../bulletin/bulletin.component';
+import { UploadDocComponent } from '../upload-doc/upload-doc.component';
+import { PrescriptionComponent } from '../prescription/prescription.component';
+import { BulletinComponent } from '../bulletin/bulletin.component';
+
+import { Prescription } from '../../models/prescription.model';
+import { Bulletin } from '../../models/bulletin.model';
+import { DocumentsService } from '../../services/documents.service';
+import { switchMap, map } from 'rxjs/operators';
+
+interface ExtractedTab {
+  id: number; // file_upload PK
+  docId: number; // bulletin_id or prescription_id
+  type: 'bulletin' | 'prescription';
+  // …plus all of your parsed fields…
+}
 
 @Component({
   selector: 'app-extracted-container',
@@ -15,48 +28,59 @@ import { BulletinComponent }      from '../bulletin/bulletin.component';
     ExtractedTabsComponent,
     UploadDocComponent,
     PrescriptionComponent,
-    BulletinComponent
+    BulletinComponent,
   ],
   templateUrl: './extracted-container.component.html',
-  styleUrls: ['./extracted-container.component.css']
 })
 export class ExtractedContainerComponent implements OnInit {
-  files: any[] = [];
+  files: ExtractedTab[] = [];
   selectedIndex = 0;
   addingMore = false;
 
-  constructor(private router: Router) {}
+  loadedBulletin: Bulletin | null = null;
+  loadedPrescription: Prescription | null = null;
+
+  constructor(
+    private router: Router,
+    private documentsService: DocumentsService
+  ) {}
 
   ngOnInit() {
-    const nav = this.router.getCurrentNavigation()?.extras.state
-             ?? history.state;
-    this.files         = nav.files || [];
-    this.selectedIndex = nav.selectedIndex ?? 0;
-
-    if (!this.files.length) {
-      this.router.navigate(['/']);
-    }
+    const nav =
+      this.router.getCurrentNavigation()?.extras.state ?? history.state;
+    this.files = nav.files || [];
+    this.selectedIndex = nav.selectedIndex || 0;
+    
+    this.loadCurrent();
   }
 
-  // called by the [+] button
   onAddMore() {
     this.addingMore = true;
   }
 
-  // called by UploadDocComponent.extracted
-  onNewDocuments(newDocs: any[]) {
-    // append to existing tabs
+  onNewDocuments(newDocs: ExtractedTab[]) {
     this.files.push(...newDocs);
-    // select the first newly added one (or whatever index you prefer)
     this.selectedIndex = this.files.length - newDocs.length;
     this.addingMore = false;
+    this.loadCurrent();
   }
 
   onTabSelected(i: number) {
     this.selectedIndex = i;
+
+    this.loadedPrescription = null;
+    this.loadedBulletin = null;
+
+    this.loadCurrent();
   }
 
-  get currentDoc() {
-    return this.files[this.selectedIndex];
+  private loadCurrent() {
+    const tab = this.files[this.selectedIndex] as ExtractedTab;
+    if (tab.type === 'bulletin') {
+      // you already have parsed data on `tab` itself
+      this.loadedBulletin = tab as unknown as Bulletin;
+    } else {
+      this.loadedPrescription = tab as unknown as Prescription;
+    }
   }
 }

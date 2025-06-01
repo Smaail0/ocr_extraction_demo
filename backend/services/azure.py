@@ -1,46 +1,60 @@
 # backend/services/azure.py
-import os
-import cv2
+
+import asyncio
+import logging
 import tempfile
 from pathlib import Path
+import cv2
 from dotenv import load_dotenv
-from starlette.concurrency import run_in_threadpool
-
-# import the real, sync pipeline functions under different names:
 from azure_model.pipeline import (
-  parse_bulletin_ocr   as _sync_parse_bulletin,
-  parse_prescription_ocr as _sync_parse_prescription,
-  classify_form        as _sync_classify_form,
+    classify_form,
+    parse_bulletin_ocr as _pipeline_bulletin,       # could be async or sync
+    parse_prescription_ocr as _pipeline_prescription # could be async or sync
 )
 
 load_dotenv(override=True)
+logger = logging.getLogger("uvicorn")
+
+# load your header templates once
+PRESC_HDR = cv2.imread("assets/ordonnance_header1.png")
+BULL_HDR  = cv2.imread("assets/bulletin_de_soin_header1.png")
+
 
 async def classify_form_on_bytes(file_bytes: bytes, filename: str) -> str:
+    # dump to disk so the sync classify_form can read it
     suffix = Path(filename).suffix or ".pdf"
-    tmp_path: Path | None = None
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = Path(tmp.name)
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
-
-        presc_hdr  = cv2.imread("assets/ordonnance_header1.png")
-        bullet_hdr = cv2.imread("assets/bulletin_de_soin_header1.png")
-        if presc_hdr is None or bullet_hdr is None:
-            raise RuntimeError("Could not load header images")
-
-        # THIS must call the sync classify_form from the pipeline:
-        return await run_in_threadpool(
-            _sync_classify_form, tmp_path, presc_hdr, bullet_hdr, None
+        # run the sync classify_form(...) on a thread
+        return await asyncio.to_thread(
+            classify_form,
+            tmp_path, PRESC_HDR, BULL_HDR, None
         )
     finally:
-        if tmp_path and tmp_path.exists():
-            tmp_path.unlink()
+        tmp_path.unlink(missing_ok=True)
 
 
 async def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
-    # delegate to your sync pipeline
-    return await run_in_threadpool(_sync_parse_bulletin, file_bytes, filename)
+    """
+    If your pipeline’s parse_bulletin_ocr is async, await it.
+    If it’s sync, run it on a thread.
+    """
+    logger.info("→ parse_bulletin_ocr")
+    result = _pipeline_bulletin(file_bytes, filename)
+    if asyncio.iscoroutine(result):
+        return await result
+    # sync path:
+    return await asyncio.to_thread(_pipeline_bulletin, file_bytes, filename)
 
 
 async def parse_prescription_ocr(file_bytes: bytes, filename: str) -> dict:
-    return await run_in_threadpool(_sync_parse_prescription, file_bytes, filename)
+    """
+    Same trick for prescriptions.
+    """
+    logger.info("→ parse_prescription_ocr")
+    result = _pipeline_prescription(file_bytes, filename)
+    if asyncio.iscoroutine(result):
+        return await result
+    return await asyncio.to_thread(_pipeline_prescription, file_bytes, filename)

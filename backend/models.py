@@ -48,7 +48,14 @@ class Bulletin(Base):
     codeApci       = Column("codeApci",       String, nullable=True)
     dateAccouchement = Column("dateAccouchement", String, nullable=True)
     
-    files = relationship("FileUpload", back_populates="bulletin")
+    file_upload   = relationship(
+        "FileUpload",
+        back_populates="bulletin",
+        uselist=False,
+        foreign_keys="[FileUpload.bulletin_id]"
+    )
+    
+    is_verified = Column(Boolean, default=False)
 
 
 class Prescription(Base):
@@ -80,27 +87,48 @@ class Prescription(Base):
     signatureCropFile = Column(String, nullable=True)
     nom_prenom_docteur    = Column(String, nullable=True)
     
-    file_id = Column(Integer, ForeignKey('file_uploads.id'))
+    file_upload   = relationship(
+        "FileUpload",
+        back_populates="prescription",
+        uselist=False,
+        foreign_keys="[FileUpload.prescription_id]"
+    )
     
-    files = relationship("FileUpload", back_populates="prescriptions")
+    is_verified = Column(Boolean, default=False)
 
 class FileUpload(Base):
     __tablename__ = "file_uploads"
-    id            = Column(Integer, primary_key=True, index=True)
-    filename      = Column(String,  nullable=False)
-    original_name = Column(String,  nullable=False)
-    path          = Column(String,  nullable=False)
-    type          = Column(String,  nullable=False)   # bulletin or ordonnance
-    uploaded_at   = Column(DateTime, default=datetime.utcnow)
 
-    bulletin_id = Column(Integer, ForeignKey('bulletins.id'))
-    bulletin = relationship("Bulletin", back_populates="files")
-    
-    prescriptions = relationship("Prescription", back_populates="files")
+    id              = Column(Integer, primary_key=True, index=True)
+    filename        = Column(String, nullable=False)
+    original_name   = Column(String, nullable=False)
+    path            = Column(String, nullable=False)
+    type            = Column(String, nullable=False)
+    uploaded_at     = Column(DateTime, default=datetime.utcnow)
+    size_in_bytes   = Column(Integer, nullable=False, default=0)
 
+    courier_id      = Column(Integer, ForeignKey("couriers.id"), nullable=False)
+    prescription_id = Column(Integer, ForeignKey("prescriptions.id"), nullable=True)
+    bulletin_id     = Column(Integer, ForeignKey("bulletins.id"),    nullable=True)
+
+    # back-refs
+    courier      = relationship("Courier",    back_populates="files")
+    prescription = relationship(
+        "Prescription",
+        back_populates="file_upload",
+        foreign_keys=[prescription_id],
+        uselist=False,
+    )
+    bulletin     = relationship(
+        "Bulletin",
+        back_populates="file_upload",
+        foreign_keys=[bulletin_id],
+        uselist=False,
+    )
     
-    courier_id = Column(Integer, ForeignKey("couriers.id"))
-    courier = relationship("Courier", back_populates="files")
+    @property
+    def is_verified(self):
+        return self.prescription.is_verified if self.prescription else self.bulletin.is_verified if self.bulletin else False
     
 class User(Base):
     __tablename__ = "users"

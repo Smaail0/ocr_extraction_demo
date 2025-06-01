@@ -1,6 +1,9 @@
 /* Center & pad content */
 .confirm-dialog-content {
-  padding: 1.5rem 1rem;
+  padding: 0 24px 24px; 
+  /* - top: 0 (so it sits directly under the title)
+     - left/right: 24px (same as mat-dialog-title)
+     - bottom: 24px so buttons aren’t jammed up against content */
   font-size: 1rem;
   color: #333;
 }

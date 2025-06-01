@@ -1,40 +1,43 @@
-
 <ng-container *ngIf="files.length > 0; else noFiles">
-    <!-- 1) the tabs bar with + -->
-    <app-extracted-tabs
-      [files]="files"
-      [(selectedIndex)]="selectedIndex"
-      (plusClick)="onAddMore()">
-    </app-extracted-tabs>
-    
-    <!-- 2) if they clicked +, show the inline uploader -->
-    <div *ngIf="addingMore" class="mt-4">
-      <app-upload-doc
-        [mode]="'embedded'"
-        (extracted)="onNewDocuments($event)"
-        (close)="addingMore = false">
-      </app-upload-doc>
-    </div>
-    
-    <!-- 3) otherwise show the detail panel -->
-    <main *ngIf="!addingMore" class="mt-4">
-      <ng-container [ngSwitch]="currentDoc.header.documentType">
-        <app-prescription
-          *ngSwitchCase="'prescription'"
-          [prescription]="currentDoc">
-        </app-prescription>
-        <app-bulletin
-          *ngSwitchCase="'bulletin_de_soin'"
-          [data]="currentDoc">
-        </app-bulletin>
-      </ng-container>
-    </main>
-  </ng-container>
+  <!-- 1) the tabs bar with + -->
+ <app-extracted-tabs
+   [files]="files"
+   [(selectedIndex)]="selectedIndex"
+   (selectedIndexChange)="onTabSelected($event)"
+   (plusClick)="onAddMore()">
+ </app-extracted-tabs>
 
-  
-  <ng-template #noFiles>
-    <div class="alert alert-info">
-      No documents to display. Please upload first.
-    </div>
-  </ng-template>
-  
+  <!-- 2) if they clicked +, show the inline uploader -->
+  <div *ngIf="addingMore" class="mt-4">
+    <app-upload-doc
+      [mode]="'embedded'"
+      (extracted)="onNewDocuments($event)"
+      (close)="addingMore = false"
+    >
+    </app-upload-doc>
+  </div>
+
+  <!-- 3) otherwise show the detail panel -->
+  <main *ngIf="!addingMore" class="mt-4">
+    <ng-container [ngSwitch]="files[selectedIndex].type">
+
+        <app-prescription
+          *ngIf="loadedPrescription"
+          [prescription]="loadedPrescription!"
+          [fileId]="files[selectedIndex].id">
+        </app-prescription>
+
+        <app-bulletin
+          *ngIf="loadedBulletin"
+          [data]="loadedBulletin!"
+          [fileId]="files[selectedIndex].id">
+        </app-bulletin>
+    </ng-container>
+  </main>
+</ng-container>
+
+<ng-template #noFiles>
+  <div class="alert alert-info" align="center">
+    No documents to display. Please upload first.
+  </div>
+</ng-template>

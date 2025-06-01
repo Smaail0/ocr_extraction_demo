@@ -165,7 +165,7 @@ async remove(user: User): Promise<void> {
   );
 
   const ref = this.dialog.open(ConfirmDialogComponent, {
-    data: { message: `Delete ${user.email}?` },
+    data: { message: `${user.email}?` },
     width: '400px'
   });
 

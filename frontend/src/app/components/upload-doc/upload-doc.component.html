@@ -179,20 +179,6 @@
               </li>
             </ul>
           </div>
-
-          <!-- Barre de Progression Globale -->
-          <div *ngIf="isUploading" class="mb-4">
-            <label class="form-label">Progression de l'Extraction</label>
-            <div class="progress">
-              <div
-                class="progress-bar progress-bar-striped progress-bar-animated"
-                role="progressbar"
-                [style.width.%]="uploadProgress"
-              >
-                {{ uploadProgress }}%
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 

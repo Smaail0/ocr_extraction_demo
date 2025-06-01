@@ -1,7 +1,7 @@
-<h2 mat-dialog-title>Confirm</h2>
+<h2 mat-dialog-title>Voulez-vous confirmer ?</h2>
 
 <mat-dialog-content class="confirm-dialog-content">
-  Delete {{ data.message }}?
+  Supprimer {{ data.message }}?
 </mat-dialog-content>
 
 <mat-dialog-actions class="dialog-actions">
@@ -10,7 +10,7 @@
     class="cancel-btn rounded-pill"
     (click)="onCancel()"
   >
-    Cancel
+    Annuler
   </button>
   <button
     mat-flat-button
@@ -18,6 +18,6 @@
     class="delete-btn rounded-pill"
     (click)="onConfirm()"
   >
-    Delete
+    Supprimer
   </button>
 </mat-dialog-actions>

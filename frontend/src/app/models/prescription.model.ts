@@ -61,6 +61,7 @@ export interface Prescription {
 
 // This is what you send to the POST /prescription endpoint
 export interface PrescriptionCreate {
+  id?: number;
   pharmacyName: string;
   pharmacyAddress?: string;
   pharmacyContact?: string;

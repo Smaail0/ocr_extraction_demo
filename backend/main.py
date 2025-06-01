@@ -1,6 +1,7 @@
 # main.py
 from datetime import datetime, timedelta
 import os, re, shutil
+import time, asyncio
 from typing import List, Optional
 from fastapi import Body, Form
 import tempfile
@@ -17,10 +18,12 @@ from sqlalchemy.orm import Session, joinedload
 from . import models, schemas
 from .database import engine, SessionLocal
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from .services.azure import classify_form_on_bytes, parse_bulletin_ocr, parse_prescription_ocr
 from azure_model.pipeline import client as azure_client, model_id as azure_model_id, classify_form
 from azure_model.signature_pipeline import get_signature_crop, get_doctor_name, verify_signature
+logger = logging.getLogger("uvicorn")
+import json
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -101,6 +104,18 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+@app.get("/api/courrier/{courier_id}", response_model=schemas.Courier)
+def get_courrier(courier_id: int, db: Session = Depends(get_db)):
+    courier = (
+        db.query(models.Courier)
+          .options(joinedload(models.Courier.files))
+          .filter(models.Courier.id == courier_id)
+          .first()
+    )
+    if not courier:
+        raise HTTPException(404, f"Courier {courier_id} not found")
+    return courier
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db:    Session = Depends(get_db)
@@ -131,56 +146,437 @@ async def get_current_superuser(
                             detail="Not enough permissions")
     return current_user
 
+@app.post("/api/prescriptions/", response_model=schemas.Prescription)
+def create_prescription(
+    presc: schemas.PrescriptionCreate,
+    file_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    db_presc = models.Prescription(**presc.dict())
+    db.add(db_presc); db.commit(); db.refresh(db_presc)
+    if file_id:
+        f = db.query(models.FileUpload).get(file_id)
+        if f:
+            f.prescription_id = db_presc.id
+            db.commit()
+    return db_presc
+
+@app.post("/api/bulletins", response_model=schemas.Bulletin)
+def create_bulletin(
+    bull: schemas.BulletinCreate,
+    file_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    db_bull = models.Bulletin(**bull.dict())
+    db.add(db_bull); db.commit(); db.refresh(db_bull)
+    if file_id:
+        f = db.query(models.FileUpload).get(file_id)
+        if f:
+            f.bulletin_id = db_bull.id
+            db.commit()
+    return db_bull
+
+@app.put(
+    "/api/bulletins/{bulletin_id}",
+    response_model=schemas.Bulletin,
+    summary="Mettre à jour un Bulletin de soin"
+)
+def update_bulletin(
+    bulletin_id: int,
+    bulletin_up: schemas.BulletinCreate = Body(...),
+    db: Session = Depends(get_db),
+):
+    db_b = db.get(models.Bulletin, bulletin_id)
+    if not db_b:
+        raise HTTPException(404, "Bulletin non trouvé")
+    for field, val in bulletin_up.dict(exclude_unset=True).items():
+        setattr(db_b, field, val)
+    db_b.is_verified = True
+    db.commit(); db.refresh(db_b)
+    return db_b
+
+@app.get(
+    "/api/bulletins/{bulletin_id}",
+    response_model=schemas.Bulletin,
+    summary="Récupérer un Bulletin de soin par ID"
+)
+def read_bulletin(
+    bulletin_id: int,
+    db: Session = Depends(get_db)
+):
+    b = db.get(models.Bulletin, bulletin_id)
+    if not b:
+        raise HTTPException(status_code=404, detail="Bulletin non trouvé")
+    return b
+
+@app.put(
+    "/api/prescriptions/{presc_id}",
+    response_model=schemas.Prescription,
+    summary="Mettre à jour une Prescription"
+)
+def update_prescription(
+    presc_id: int,
+    presc_up: schemas.PrescriptionCreate = Body(...),
+    db: Session = Depends(get_db),
+):
+    db_p = db.get(models.Prescription, presc_id)
+    if not db_p:
+        raise HTTPException(404, "Prescription non trouvée")
+    for field, val in presc_up.dict(exclude_unset=True).items():
+        setattr(db_p, field, val)
+    db_p.is_verified = True
+    db.commit(); db.refresh(db_p)
+    return db_p
+
+@app.get(
+    "/api/prescriptions/{presc_id}",
+    response_model=schemas.Prescription,
+    summary="Récupérer une Prescription par ID"
+)
+def read_prescription(
+    presc_id: int,
+    db: Session = Depends(get_db)
+):
+    p = db.get(models.Prescription, presc_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Prescription non trouvée")
+    return p
+
 @app.post(
     "/api/courrier/upload",
     response_model=schemas.Courier,
-    summary="Créer un Courier et y attacher 1+ fichiers"
+    summary="Créer un Courier et y attacher 1+ fichiers, en extrayant et sauvegardant immédiatement"
 )
 async def upload_courrier(
     mat_fiscale: str              = Form(...),
     nom_complet_adherent: str     = Form(...),
     nom_complet_beneficiaire: str = Form(...),
     files: List[UploadFile]       = File(...),
-    db: Session                   = Depends(get_db)
+    db:     Session               = Depends(get_db)
 ):
-
+    """
+    1) Crée le courier (matricule, nom adherent, nom beneficiaire).
+    2) Pour chaque fichier envoyé :
+       a) Lit les bytes, écrit le fichier sur disque.
+       b) Classifie (prescription vs bulletin) via Azure.
+       c) Parse le document (appel async à Azure + traitements).
+       d) Crée la ligne Prescription ou Bulletin en base et
+          met à jour le FileUpload associé.
+    3) Renvoie le Courier (avec tous ses FileUpload + FK remplis).
+    """
+    # ── 1) Créer le Courier de base ──────────────────────────────
     db_courier = models.Courier(
-        mat_fiscale=mat_fiscale,
-        nom_complet_adherent=nom_complet_adherent,
-        nom_complet_beneficiaire=nom_complet_beneficiaire,
-        created_at=datetime.utcnow()
+        mat_fiscale              = mat_fiscale,
+        nom_complet_adherent     = nom_complet_adherent,
+        nom_complet_beneficiaire = nom_complet_beneficiaire,
+        created_at               = datetime.utcnow()
     )
     db.add(db_courier)
     db.commit()
     db.refresh(db_courier)
 
-
+    # ── 2) Pour chaque fichier uploadé ───────────────────────────
     for upload in files:
-        # Générer un nom unique pour le disque
-        ts        = datetime.utcnow().isoformat()
-        safe_ts   = re.sub(r"[:.]", "-", ts)
-        stored    = f"{safe_ts}_{upload.filename}"
+        # ---- 2a) Lire bytes + stocker sur disque -----------------
+        raw_bytes = await upload.read()
+        if not raw_bytes or not upload.filename:
+            # Si pas de contenu, on l’ignore ou on lève une erreur
+            raise HTTPException(status_code=400, detail=f"Fichier invalide : {upload.filename}")
+
+        # Générer un nom unique pour le fichier sur disque
+        ts      = datetime.utcnow().isoformat()
+        safe_ts = re.sub(r"[:.]", "-", ts)
+        stored  = f"{safe_ts}_{upload.filename}"
         full_path = os.path.join(UPLOAD_DIR, stored)
 
+        # Écrire le fichier brut sur disque
         with open(full_path, "wb") as out_f:
-            shutil.copyfileobj(upload.file, out_f)
+            out_f.write(raw_bytes)
 
-        file_type = detect_file_type_from_filename(upload.filename)
-
+        size_bytes = os.path.getsize(full_path)
+        
+        # Créer d’abord un FileUpload temporaire (type="unknown") pour avoir l’ID
         db_file = models.FileUpload(
             filename      = stored,
             original_name = upload.filename,
             path          = full_path,
-            type          = file_type,       
+            size_in_bytes = size_bytes,
+            type          = "unknown",   # nous mettrons à jour après classification
             courier_id    = db_courier.id
-
         )
         db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
 
-    db.commit()
-    db.refresh(db_courier)
+        # ---- 2b) Classification Azure (prescription vs bulletin) ---
+        try:
+            form_key = await classify_form_on_bytes(raw_bytes, upload.filename)
+        except Exception as e:
+            # Si classification échoue, on marque l’erreur et continue
+            db_file.type = "error"
+            db.add(db_file)
+            db.commit()
+            # (optionnel : lister une erreur dans la réponse finale, ou lever ici)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Impossible de classifier {upload.filename} : {str(e)}"
+            )
 
-    return db_courier
+        # Azure renvoie parfois "bulletin" ou "bulletin_de_soin", on normalise
+        if form_key.lower().startswith("bulletin"):
+            form_key = "bulletin_de_soin"
+        elif form_key.lower().startswith("prescription"):
+            form_key = "prescription"
+        else:
+            # classification inconnue
+            db_file.type = "invalid"
+            db.add(db_file)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Type de document non reconnu pour {upload.filename}: {form_key}"
+            )
+
+        # ---- 2c) Parsing avec Azure (appel async + extraction) ------
+        parsed: dict
+        try:
+            if form_key == "prescription":
+                parsed = await parse_prescription_ocr(raw_bytes, upload.filename)
+            else:  # "bulletin_de_soin"
+                parsed = await parse_bulletin_ocr(raw_bytes, upload.filename)
+        except Exception as e:
+            # L’API Azure a échoué ou timeout :
+            db_file.type = "error"
+            db.add(db_file)
+            db.commit()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Échec du parsing {upload.filename}: {str(e)}"
+            )
+
+        # ---- 2d) Enregistrer Prescription ou Bulletin en base -------
+        # parsed est un dict contenant un champ "header": {"documentType": "..."} plus tous les champs extraits.
+        header = parsed.get("header", {})
+        doc_type = header.get("documentType")
+
+        # On retire "header" du dict pour ne pas surcharger le modèle SQLAlchemy
+        body_data = { k:v for k,v in parsed.items() if k != "header" }
+
+        if doc_type == "prescription":
+            cnam_val = body_data.pop("ref_cnam", None)
+            if cnam_val:
+                body_data["pharmacistCnamRef"] = cnam_val
+            # Créer une Prescription
+            try:
+                db_presc = models.Prescription(**body_data)
+                db.add(db_presc)
+                db.commit()
+                db.refresh(db_presc)
+
+                # Mettre à jour le FileUpload pour lier la Prescription
+                db_file.type = "prescription"
+                db_file.prescription_id = db_presc.id
+                db.add(db_file)
+                db.commit()
+            except Exception as e:
+                # Si insertion échoue, on marque error
+                db_file.type = "error"
+                db.add(db_file)
+                db.commit()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Impossible de sauver la prescription en base : {str(e)}"
+                )
+
+        elif doc_type == "bulletin_de_soin":
+            # Créer un Bulletin
+            try:
+                db_bull = models.Bulletin(**body_data)
+                db.add(db_bull)
+                db.commit()
+                db.refresh(db_bull)
+
+                # Mettre à jour le FileUpload pour lier le Bulletin
+                db_file.type = "bulletin"
+                db_file.bulletin_id = db_bull.id
+                db.add(db_file)
+                db.commit()
+            except Exception as e:
+                db_file.type = "error"
+                db.add(db_file)
+                db.commit()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Impossible de sauver le bulletin en base : {str(e)}"
+                )
+
+        else:
+            # En principe on ne devrait jamais arriver ici
+            db_file.type = "invalid"
+            db.add(db_file)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Type inattendu pour le parsing : {doc_type}"
+            )
+
+    # ── 3) Recharger le Courier AVEC ses associations (files, prescriptions, bulletins) ──
+    courier_with_files = (
+        db.query(models.Courier)
+          .options(joinedload(models.Courier.files))
+          .filter(models.Courier.id == db_courier.id)
+          .first()
+    )
+
+    return courier_with_files
+
+@app.post(
+    "/api/courrier/{courier_id}/files",
+    response_model=schemas.Courier,
+    summary="Attach files to an existing Courier, classify+parse, and save to DB"
+)
+async def add_and_parse_files_to_courrier(
+    courier_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    1) Look up the existing Courier by courier_id
+    2) For each uploaded file:
+       a) Read bytes → save to disk
+       b) Create FileUpload(type='unknown') so we get an ID
+       c) Call Azure to classify (prescription vs bulletin).
+       d) Call Azure to parse; create a Prescription or Bulletin row.
+       e) Update FileUpload.type and prescription_id or bulletin_id.
+    3) Return the updated Courier (with its files). 
+    """
+    db_courier = db.query(models.Courier).get(courier_id)
+    if not db_courier:
+        raise HTTPException(status_code=404, detail=f"Courier {courier_id} not found")
+
+    for upload in files:
+        raw_bytes = await upload.read()
+        if not raw_bytes or not upload.filename:
+            raise HTTPException(status_code=400, detail=f"Invalid file: {upload.filename}")
+
+        # ── 2a) Save to disk ──────────────────────────────────
+        ts = datetime.utcnow().isoformat()
+        safe_ts = re.sub(r"[:.]", "-", ts)
+        stored_name = f"{safe_ts}_{upload.filename}"
+        full_path = os.path.join(UPLOAD_DIR, stored_name)
+
+        with open(full_path, "wb") as out_f:
+            out_f.write(raw_bytes)
+            
+        size_bytes = os.path.getsize(full_path)
+
+        # ── 2b) Create a FileUpload record (type='unknown') ───
+        db_file = models.FileUpload(
+            filename=stored_name,
+            original_name=upload.filename,
+            size_in_bytes=size_bytes,
+            path=full_path,
+            type="unknown",
+            courier_id=db_courier.id
+        )
+        db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
+
+        # ── 2c) Classification Azure ---------------------------
+        try:
+            form_key = await classify_form_on_bytes(raw_bytes, upload.filename)
+        except Exception as e:
+            # Mark as error
+            db_file.type = "error"
+            db.add(db_file)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot classify {upload.filename}: {str(e)}"
+            )
+
+        if form_key not in ("bulletin_de_soin", "prescription"):
+            db_file.type = "invalid"
+            db.add(db_file)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown document type for {upload.filename}: {form_key}"
+            )
+
+        # ── 2d) Parsing Azure + Insert into DB --------------
+        try:
+            if form_key == "prescription":
+                parsed = await parse_prescription_ocr(raw_bytes, upload.filename)
+            else:  # bulletin_de_soin
+                parsed = await parse_bulletin_ocr(raw_bytes, upload.filename)
+        except Exception as e:
+            db_file.type = "error"
+            db.add(db_file)
+            db.commit()
+            raise HTTPException(status_code=500,
+                                detail=f"Parsing failed for {upload.filename}: {str(e)}")
+
+        header = parsed.get("header", {})
+        doc_type = header.get("documentType")
+        body_data = {k: v for k, v in parsed.items() if k != "header"}
+
+        if doc_type == "prescription":
+            cnam_val = body_data.pop("ref_cnam", None)
+            if cnam_val:
+                body_data["pharmacistCnamRef"] = cnam_val
+
+            try:
+                db_presc = models.Prescription(**body_data)
+                db.add(db_presc)
+                db.commit()
+                db.refresh(db_presc)
+
+                db_file.type = "prescription"
+                db_file.prescription_id = db_presc.id
+                db.add(db_file)
+                db.commit()
+            except Exception as e:
+                db_file.type = "error"
+                db.add(db_file)
+                db.commit()
+                raise HTTPException(status_code=500,
+                                    detail=f"Cannot save prescription: {str(e)}")
+
+        elif doc_type == "bulletin_de_soin":
+            try:
+                db_bull = models.Bulletin(**body_data)
+                db.add(db_bull)
+                db.commit()
+                db.refresh(db_bull)
+
+                db_file.type = "bulletin"
+                db_file.bulletin_id = db_bull.id
+                db.add(db_file)
+                db.commit()
+            except Exception as e:
+                db_file.type = "error"
+                db.add(db_file)
+                db.commit()
+                raise HTTPException(status_code=500,
+                                    detail=f"Cannot save bulletin: {str(e)}")
+        else:
+            # Should never happen, but just in case
+            db_file.type = "invalid"
+            db.add(db_file)
+            db.commit()
+            raise HTTPException(status_code=400,
+                                detail=f"Unexpected parsed documentType: {doc_type}")
+
+    # ── 3) Return the Courier with all associated files ────
+    updated = (
+        db.query(models.Courier)
+          .options(joinedload(models.Courier.files))
+          .filter(models.Courier.id == courier_id)
+          .first()
+    )
+    return updated
 
 @app.get("/api/users", response_model=List[schemas.UserRead])
 def list_users(db: Session = Depends(get_db)):
@@ -293,196 +689,59 @@ def login(
     })
     return {"access_token": token, "token_type": "bearer"}
 
-@app.post("/prescriptions/{id}/verify-signature")
+@app.post("/api/prescriptions/{id}/verify-signature")
 def verify_signature_endpoint(id: int, db: Session = Depends(get_db)):
     presc = db.query(models.Prescription).get(id)
     if not presc or not presc.signatureCropFile:
         raise HTTPException(404, "No signature found for that prescription")
 
-    # build your absolute path to the genuine_signatures folder
     here        = Path(__file__).resolve().parent
     sigs_folder = here / "genuine_signatures"
-
     if not sigs_folder.exists() or not sigs_folder.is_dir():
         raise HTTPException(500, f"Signature folder not found at '{sigs_folder}'")
 
-    # load the test crop
+    # Load the signature crop in grayscale
     test_crop = cv2.imread(str(presc.signatureCropFile), cv2.IMREAD_GRAYSCALE)
     if test_crop is None:
         raise HTTPException(500, f"Cannot load signature crop at '{presc.signatureCropFile}'")
 
-    # now pass the **directory** into your pipeline
     try:
-        result = verify_signature(
+        raw_result = verify_signature(
             test_crop    = test_crop,
             genuine_path = str(sigs_folder)
         )
+        # raw_result is probably a dict with numpy types, e.g. numpy.bool_, numpy.float64, etc.
     except FileNotFoundError as e:
-        # in case your pipeline still bails if it sees no images
         raise HTTPException(404, str(e))
 
-    return result
-
-# ── OCR Parse endpoint ──
-@app.post("/api/documents/parse")
-async def parse_document(file: UploadFile = File(...)):
-    if not file or not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-    data = await file.read()
-    suffix = Path(file.filename).suffix or ".pdf"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(data)
-        tmp_path = Path(tmp.name)
-
-    # 1) classify
-    form_key = classify_form(
-        scan_path=tmp_path,
-        presc_hdr_img=PRESC_HDR,
-        bullet_hdr_img=BULL_HDR,
-    )
-    tmp_path.unlink()
-    
-    if form_key == 'bulletin':
-        form_key = "bulletin_de_soin"
-
-    # 2) parse with the right function
-    try:
-        if form_key == "prescription":
-            parsed = await parse_prescription_ocr(data, file.filename)
-        elif form_key == "bulletin_de_soin":
-            parsed = await parse_bulletin_ocr(data, file.filename)
-        else:
-            raise HTTPException(400, f"Unknown document type: {form_key}")
-    except ValueError as err:
-        # parser’s internal guard fired
-        raise HTTPException(status_code=400, detail=str(err))
-
-    # 3) If it's a bulletin, ensure we got at least one table back
-    if form_key == "bulletin_de_soin":
-        all_tables = (
-            parsed.get("consultationsDentaires", []) +
-            parsed.get("prothesesDentaires", []) +
-            parsed.get("consultationsVisites", []) +
-            parsed.get("actesMedicaux", []) +
-            parsed.get("actesParamed", []) +
-            parsed.get("biologie", []) +
-            parsed.get("hospitalisation", []) +
-            parsed.get("pharmacie", [])
-        )
-        if not any(all_tables):
-            raise HTTPException(
-                status_code=400,
-                detail="Unrecognized document type; please upload a Bulletin de soin or a Prescription."
-            )
-
-    # 4) return
-    return {
-        "document_type": form_key,
-        "filename": file.filename,
-        "parsed": parsed
+    # Convert any NumPy types to native Python:
+    # (adjust keys based on what your pipeline actually returns)
+    clean_result = {
+        "akaze":    float(raw_result["akaze"]),
+        "ssim":     float(raw_result["ssim"]),
+        "genuine":  bool(raw_result["genuine"])
     }
 
+    return clean_result
 
-# ── Create Bulletin ──
-@app.post("/api/bulletin/", response_model=schemas.Bulletin)
-def create_bulletin(bulletin: schemas.BulletinCreate, file_id: Optional[int] = None, db: Session = Depends(get_db)):
-    print(f"Received bulletin data: {bulletin}")
+@app.post("/api/documents/parse")
+async def parse_document(file: UploadFile = File(...)):
+    data = await file.read()
 
-    try:
-        # Create new bulletin
-        db_bulletin = models.Bulletin(
-            **bulletin.dict(exclude={"identifiantUnique"}),
-            identifiantUnique=bulletin.identifiantUnique
-        )
+    form_key = await classify_form_on_bytes(data, file.filename)
+    if form_key == "bulletin":
+        form_key = "bulletin_de_soin"
 
-        db.add(db_bulletin)
-        db.commit()
-        db.refresh(db_bulletin)
-        
-        # Associate with file if file_id is provided
-        if file_id:
-            file = db.query(models.FileUpload).filter(models.FileUpload.id == file_id).first()
-            if file:
-                file.bulletin_id = db_bulletin.id
-                db.commit()
-        
-        return db_bulletin
+    if form_key == "prescription":
+        parsed = await parse_prescription_ocr(data, file.filename)
+    else:
+        parsed = await parse_bulletin_ocr(data, file.filename)
 
-    except Exception as e:
-        db.rollback()
-        print(f"Error creating bulletin: {str(e)}")
-        raise HTTPException(500, f"Failed to save bulletin: {str(e)}")
-
-@app.post("/api/prescription/", response_model=schemas.Prescription)
-def create_prescription(
-    presc: schemas.PrescriptionCreate,
-    file_id: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    print(f"Received prescription data: {presc}")
-    try:
-        if not presc.items:
-            raise HTTPException(400, "Prescription must have at least one item")
-
-        # Create new prescription
-        data = presc.dict()
-        db_presc = models.Prescription(**data)
-        
-        db.add(db_presc)
-        db.commit()
-        db.refresh(db_presc)
-        
-        # Associate with file if file_id is provided
-        if file_id:
-            file = db.query(models.FileUpload).filter(models.FileUpload.id == file_id).first()
-            if file:
-                file.prescription_id = db_presc.id
-                db.commit()
-        
-        return db_presc
-    
-    except Exception as e:
-        db.rollback()  # Rollback transaction on error
-        # Log the actual error
-        print(f"Error creating prescription: {str(e)}")
-        raise HTTPException(500, f"Failed to save prescription: {str(e)}")
-@app.post("/api/documents/associate")
-def associate_file_with_document(
-    association: schemas.FileDocumentAssociation,
-    db: Session = Depends(get_db)
-):
-    try:
-        file = db.query(models.FileUpload).filter(models.FileUpload.id == association.file_id).first()
-        if not file:
-            raise HTTPException(404, "File not found")
-
-        if association.document_type == "bulletin":
-            file.bulletin_id = association.document_id
-            file.prescription_id = None
-        elif association.document_type == "prescription" or association.document_type == "ordonnance":
-            file.prescription_id = association.document_id
-            file.bulletin_id = None
-        else:
-            raise HTTPException(400, "Invalid document type")
-            
-        db.commit()
-        db.refresh(file)
-        
-        return {
-            "message": "Association successful",
-            "file": {
-                "id": file.id,
-                "filename": file.filename,
-                "type": file.type,
-                "bulletin_id": file.bulletin_id,
-                "prescription_id": file.prescription_id
-            }
-        }
-        
-    except Exception as e:
-        db.rollback()
-        print(f"Error associating file with document: {str(e)}")
-        raise HTTPException(500, f"Failed to associate file: {str(e)}")
+    return {
+        "document_type": form_key,
+        "filename":      file.filename,
+        "parsed":        parsed,
+    }
     
 @app.get("/api/bulletin/uploaded/latest")
 async def get_latest_bulletin(db: Session = Depends(get_db)):
@@ -591,7 +850,7 @@ async def get_all_ordonnances(db: Session = Depends(get_db)):
             "uploaded_at": f.uploaded_at,
             "type": f.type
         }
-        for f in files if f.type == "ordonnance"
+        for f in files if f.type == "prescription"
     ]
     return ordonnances
 
@@ -626,23 +885,7 @@ async def get_latest_courrier(db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(500, detail="Failed to fetch latest courier")
     
-@app.put("/api/bulletin/{bulletin_id}", response_model=schemas.Bulletin)
-def update_bulletin(
-    bulletin_id: int,
-    bulletin: schemas.BulletinCreate = Body(...),
-    db: Session = Depends(get_db)
-):
-    db_b = db.get(models.Bulletin, bulletin_id)
-    if not db_b:
-        raise HTTPException(404, "Bulletin not found")
-
-    for key, val in bulletin.model_dump().items():
-        setattr(db_b, key, val)
-
-    db.commit()
-    db.refresh(db_b)
-    return db_b
-
+    
 @app.get("/api/files/{file_id}")
 async def get_file(file_id: int, db: Session = Depends(get_db)):
     """
@@ -683,6 +926,21 @@ async def get_file(file_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error serving file: {str(e)}")
         raise HTTPException(status_code=500, detail="Error serving file")
+    
+@app.delete("/api/files/{file_id}", status_code=204)
+async def delete_file(file_id: int, db: Session = Depends(get_db)):
+    db_file = db.query(models.FileUpload).get(file_id)
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    # Delete from disk if you want:
+    if os.path.exists(db_file.path):
+        try:
+            os.remove(db_file.path)
+        except OSError:
+            pass
+    db.delete(db_file)
+    db.commit()
+    return Response(status_code=204)
 
 @app.get("/health")
 def health_check():

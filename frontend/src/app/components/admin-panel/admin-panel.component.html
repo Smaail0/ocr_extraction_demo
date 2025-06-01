@@ -2,18 +2,18 @@
   <main class="main-content">
     <!-- Page header -->
     <div class="header">
-      <h1 class="page-title">Admin Panel</h1>
+      <h1 class="page-title">Gestion Admin</h1>
     </div>
 
     <section class="admin-card">
-      <h2 class="card-title">{{ editing ? "Edit User" : "Create User" }}</h2>
+      <h2 class="card-title">{{ editing ? "Modifier l'utilisateur" : "Créer un utilisateur" }}</h2>
 
       <form [formGroup]="form" (ngSubmit)="save()" novalidate>
         <!-- Bootstrap row for 3 columns -->
         <div class="row g-3 mb-3">
           <!-- Username -->
           <div class="col-12 col-md-4">
-            <label for="username" class="form-label">Username</label>
+            <label for="username" class="form-label">Nom d'utilisateur</label>
             <div class="input-group">
               <span class="input-group-text">
                 <svg
@@ -72,7 +72,7 @@
 
           <!-- Password -->
           <div class="col-12 col-md-4">
-            <label for="password" class="form-label">Password</label>
+            <label for="password" class="form-label">Mot de passe</label>
             <div class="input-group">
               <span class="input-group-text">
                 <svg
@@ -126,7 +126,7 @@
             id="is_superuser"
             formControlName="is_superuser"
           />
-          <label class="form-check-label" for="is_superuser"> Superuser </label>
+          <label class="form-check-label" for="is_superuser"> Superutilisateur </label>
         </div>
 
         <div class="form-check mb-3">
@@ -136,7 +136,7 @@
             id="is_active"
             formControlName="is_active"
           />
-          <label class="form-check-label" for="is_active"> Active </label>
+          <label class="form-check-label" for="is_active"> Actif </label>
         </div>
 
         <!-- Action buttons -->
@@ -146,7 +146,7 @@
             class="btn btn-primary rounded-pill px-4"
             [disabled]="form.invalid"
           >
-            {{ editing ? "Update" : "Create" }}
+            {{ editing ? "Modifer" : "Créer" }}
           </button>
           <button
             *ngIf="editing"
@@ -154,14 +154,14 @@
             class="btn btn-secondary rounded-pill px-4"
             (click)="startCreate()"
           >
-            Cancel
+            Annuler
           </button>
         </div>
       </form>
     </section>
 
     <section class="admin-card">
-      <h2 class="card-title">Existing Users</h2>
+      <h2 class="card-title">Utilisateurs existants</h2>
       <table
         mat-table
         [dataSource]="users"
@@ -169,7 +169,7 @@
       >
         <!-- USER COLUMN -->
         <ng-container matColumnDef="user">
-          <th mat-header-cell *matHeaderCellDef>User</th>
+          <th mat-header-cell *matHeaderCellDef>Utilisateur</th>
           <td mat-cell *matCellDef="let u">
             <div class="user-cell">
               <div class="user-id">{{ u.id }}</div>
@@ -183,13 +183,13 @@
 
         <!-- ROLE COLUMN -->
         <ng-container matColumnDef="role">
-          <th mat-header-cell *matHeaderCellDef>Role</th>
+          <th mat-header-cell *matHeaderCellDef>Rôle</th>
           <td mat-cell *matCellDef="let u">
             <span
               class="role-badge"
               [ngClass]="u.is_superuser ? 'superuser' : 'user'"
             >
-              {{ u.is_superuser ? "Superuser" : "User" }}
+              {{ u.is_superuser ? "Superutilisateur" : "Utilisateur" }}
             </span>
           </td>
         </ng-container>
@@ -201,7 +201,7 @@
             <button
               class="action-icon edit"
               (click)="openEditDialog(u)"
-              matTooltip="Edit user"
+              matTooltip="Modifier l’utilisateur"
             >
               <!-- pencil SVG -->
               <svg
@@ -222,7 +222,7 @@
             <button
               class="action-icon delete"
               (click)="remove(u)"
-              matTooltip="Delete user"
+              matTooltip="Supprimer l’utilisateur"
             >
               <!-- trash SVG -->
               <svg

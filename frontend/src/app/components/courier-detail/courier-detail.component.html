@@ -1,0 +1,79 @@
+<!-- courier-detail.component.html -->
+
+<div *ngIf="isLoading" class="spinner-container">
+  <div class="spinner"></div>
+  <p>Chargement…</p>
+</div>
+
+<div *ngIf="errorMessage" class="alert alert-danger">
+  {{ errorMessage }}
+</div>
+
+<ng-container *ngIf="!isLoading && !errorMessage">
+  <!-- If noExtractedData is true, show the alert and skip the tabs -->
+  <div *ngIf="noExtractedData; else tabsBlock" class="alert alert-info">
+    Aucun document OCR vérifié à afficher.
+  </div>
+
+  <!-- This is the named template “tabsBlock” -->
+  <ng-template #tabsBlock>
+    <div class="courier-card mb-4">
+      <div class="courier-card__header">
+        <h2 class="courier-card__title">
+          Courrier #{{ courier.id }} — {{ courier.nom_complet_adherent }}
+        </h2>
+      </div>
+      <div class="courier-card__body row">
+        <div class="col-sm-4 courier-card__item">
+          <span class="courier-card__label">Matricule :</span>
+          <span class="courier-card__value">#{{ courier.mat_fiscale }}</span>
+        </div>
+        <div class="col-sm-8 courier-card__item">
+          <span class="courier-card__label">Bénéficiaire :</span>
+          <span class="courier-card__value">{{
+            courier.nom_complet_beneficiaire
+          }}</span>
+        </div>
+      </div>
+    </div>
+
+    <ng-container *ngIf="tabs.length > 0; else noExtracted">
+      <!-- 1) The row of tabs -->
+      <app-extracted-tabs
+        [files]="tabs"
+        [(selectedIndex)]="selectedIndex"
+        (selectedIndexChange)="onTabChange($event)"
+      >
+      </app-extracted-tabs>
+
+      <!-- 2) The content panel -->
+      <main class="mt-4">
+        <ng-container [ngSwitch]="tabs[selectedIndex].header.documentType">
+          <!-- Prescription -->
+          <ng-container *ngSwitchCase="'prescription'">
+            <app-prescription
+              *ngIf="tabs[selectedIndex].header.documentType === 'prescription'"
+              [prescription]="loadedPrescription"
+              [fileId]="tabs[selectedIndex].uploadId"
+            >
+            </app-prescription>
+          </ng-container>
+
+          <ng-container *ngSwitchCase="'bulletin_de_soin'">
+            <app-bulletin
+              *ngIf="tabs[selectedIndex].header.documentType === 'bulletin_de_soin'"
+              [data]="loadedBulletin"
+              [fileId]="tabs[selectedIndex].uploadId"
+            >
+            </app-bulletin>
+          </ng-container>
+        </ng-container>
+      </main>
+    </ng-container>
+
+    <ng-template #noExtracted>
+      <div class="alert alert-info">Aucun document OCR vérifié à afficher.</div>
+    </ng-template>
+    >
+  </ng-template></ng-container
+>
