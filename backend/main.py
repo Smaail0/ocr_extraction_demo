@@ -16,6 +16,7 @@ from sqlalchemy import desc
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session, joinedload
 from . import models, schemas
+from .schemas import DiagnoseRequest, DiagnoseResponseFR
 from .database import engine, SessionLocal
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
@@ -24,6 +25,7 @@ from azure_model.pipeline import client as azure_client, model_id as azure_model
 from azure_model.signature_pipeline import get_signature_crop, get_doctor_name, verify_signature
 logger = logging.getLogger("uvicorn")
 import json
+from .services.diagnosis_service import get_probable_diagnoses_deepseek
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -64,7 +66,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:4200"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -103,6 +105,15 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     expire    = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+@app.post("/api/diagnose_fr", response_model=DiagnoseResponseFR)
+async def diagnose_prescription_fr(request: DiagnoseRequest):
+    items = [item.dict() for item in request.items]
+    try:
+        result = get_probable_diagnoses_deepseek(items)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return result
 
 @app.get("/api/courrier/{courier_id}", response_model=schemas.Courier)
 def get_courrier(courier_id: int, db: Session = Depends(get_db)):
@@ -176,37 +187,32 @@ def create_bulletin(
             db.commit()
     return db_bull
 
-@app.put(
-    "/api/bulletins/{bulletin_id}",
-    response_model=schemas.Bulletin,
-    summary="Mettre à jour un Bulletin de soin"
-)
+@app.put("/api/bulletins/{bulletin_id}", response_model=schemas.Bulletin)
 def update_bulletin(
     bulletin_id: int,
-    bulletin_up: schemas.BulletinCreate = Body(...),
-    db: Session = Depends(get_db),
+    bulletin_up:  schemas.BulletinCreate = Body(...),
+    db:          Session        = Depends(get_db),
 ):
     db_b = db.get(models.Bulletin, bulletin_id)
     if not db_b:
         raise HTTPException(404, "Bulletin non trouvé")
+
     for field, val in bulletin_up.dict(exclude_unset=True).items():
         setattr(db_b, field, val)
+
     db_b.is_verified = True
-    db.commit(); db.refresh(db_b)
+    db.commit()
+    db.refresh(db_b)
     return db_b
 
-@app.get(
-    "/api/bulletins/{bulletin_id}",
-    response_model=schemas.Bulletin,
-    summary="Récupérer un Bulletin de soin par ID"
-)
+@app.get("/api/bulletins/{bulletin_id}", response_model=schemas.Bulletin)
 def read_bulletin(
     bulletin_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     b = db.get(models.Bulletin, bulletin_id)
     if not b:
-        raise HTTPException(status_code=404, detail="Bulletin non trouvé")
+        raise HTTPException(404, "Bulletin non trouvé")
     return b
 
 @app.put(
@@ -721,8 +727,18 @@ def verify_signature_endpoint(id: int, db: Session = Depends(get_db)):
         "ssim":     float(raw_result["ssim"]),
         "genuine":  bool(raw_result["genuine"])
     }
+    
+    flagged = not clean_result["genuine"]
+    presc.is_flagged = flagged
+    db.add(presc)
+    db.commit()
 
-    return clean_result
+    return {
+        "akaze":    clean_result["akaze"],
+        "ssim":     clean_result["ssim"],
+        "genuine":  clean_result["genuine"],
+        "flagged":  flagged
+    }
 
 @app.post("/api/documents/parse")
 async def parse_document(file: UploadFile = File(...)):
@@ -833,7 +849,8 @@ async def get_all_bulletins(db: Session = Depends(get_db)):
             "filename": f.filename,
             "original_name": f.original_name,
             "uploaded_at": f.uploaded_at,
-            "type": f.type
+            "type": f.type,
+            "is_verified": f.is_verified,
         }
         for f in files if f.type == "bulletin"
     ]
@@ -848,7 +865,9 @@ async def get_all_ordonnances(db: Session = Depends(get_db)):
             "filename": f.filename,
             "original_name": f.original_name,
             "uploaded_at": f.uploaded_at,
-            "type": f.type
+            "type": f.type,
+            "is_verified": f.is_verified,
+            "is_flagged": f.is_flagged,
         }
         for f in files if f.type == "prescription"
     ]

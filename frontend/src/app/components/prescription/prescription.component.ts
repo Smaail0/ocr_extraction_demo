@@ -16,7 +16,10 @@ import {
   SignatureResult,
   DocumentsService,
   FileUpload,
+  DiagnoseResponseFR,
 } from '../../services/documents.service';
+
+
 
 writtenNumber.defaults.lang = 'fr';
 
@@ -41,6 +44,12 @@ export class PrescriptionComponent implements OnInit {
   errorMessage: string = '';
   successMessage: string = '';
   processingFile: boolean = false;
+
+  frDiagnostiques: string[] = [];
+  frMedicamentHorsNorme: string | null = null;
+  frRawResponse: string = '';
+  isLoadingDiagnoses = false;
+  diagnoseError = '';
 
   get signatureUrl(): string | null {
     return this.prescription.signatureCropFile
@@ -117,6 +126,34 @@ export class PrescriptionComponent implements OnInit {
     );
   }
 
+  // 1) Add this helper method:
+  addItemRow() {
+    // Make sure the prescription and its items array exist:
+    if (!this.prescription) {
+      return;
+    }
+    if (!Array.isArray(this.prescription.items)) {
+      // If items is undefined or not an array, initialize it:
+      this.prescription.items = [];
+    }
+
+    // Push a “blank” item object into the array:
+    this.prescription.items.push({
+      codePCT: '',
+      produit: '',
+      forme: '',
+      qte: '',
+      puv: '',
+      montantPercu: '',
+      nio: '',
+      prLot: '',
+      montantRes: '',
+    });
+
+    // If you want to re‐compute totals immediately:
+    this.calculateTotals();
+  }
+
   analyseSignature() {
     console.log('» analyseSignature clicked, id =', this.prescription.id);
     if (!this.prescription.id) return;
@@ -174,6 +211,10 @@ export class PrescriptionComponent implements OnInit {
     this.isEditMode = false;
     this.showStatusAlert = false;
 
+    this.frDiagnostiques = [];
+    this.frMedicamentHorsNorme = null;
+    this.frRawResponse = '';
+    this.diagnoseError = '';
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -249,4 +290,29 @@ export class PrescriptionComponent implements OnInit {
   goToPrescription() {
     this.router.navigate(['/prescription']);
   }
+
+    suggestDiagnosesFR() {
+    if (!this.prescription || !Array.isArray(this.prescription.items)) {
+      return;
+    }
+
+    this.isLoadingDiagnoses = true;
+    this.diagnoseError = '';
+    this.documentsService
+      .getDiagnosesFR(this.prescription.items)
+      .subscribe({
+        next: (res: DiagnoseResponseFR) => {
+          this.frDiagnostiques = res.diagnostiques;
+          this.frMedicamentHorsNorme = res.medicament_hors_norme;
+          this.frRawResponse = res.raw_response;
+          this.isLoadingDiagnoses = false;
+        },
+        error: (err) => {
+          console.error('Error fetching diagnoses:', err);
+          this.diagnoseError = 'Impossible de récupérer les diagnostics.';
+          this.isLoadingDiagnoses = false;
+        },
+      });
+  }
+
 }

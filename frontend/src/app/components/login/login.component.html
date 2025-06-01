@@ -1,6 +1,6 @@
 <div class="auth-container">
   <div class="auth-card">
-    <h2 class="auth-title">Sign in</h2>
+    <h2 class="auth-title">Se connecter</h2>
     <br>
 
     <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
@@ -9,14 +9,14 @@
         <input
           formControlName="email"
           type="text"
-          placeholder="Email or Phone"
+          placeholder="Email"
           class="input-field"
         />
         <div
           *ngIf="loginForm.get('email')?.touched && loginForm.get('email')?.invalid"
           class="error"
         >
-          Please enter a valid email.
+          Veuiller entrer un email valide.
         </div>
       </div>
 
@@ -25,7 +25,7 @@
         <input
           formControlName="password"
           [type]="showPassword ? 'text' : 'password'"
-          placeholder="Password"
+          placeholder="Mot de passe"
           class="input-field"
         />
         <button
@@ -33,18 +33,18 @@
           class="toggle-password"
           (click)="toggleShowPassword()"
         >
-          {{ showPassword ? 'hide' : 'show' }}
+          {{ showPassword ? 'Masquer' : 'Afficher' }}
         </button>
         <div
           *ngIf="loginForm.get('password')?.touched && loginForm.get('password')?.invalid"
           class="error"
         >
-          Password is required.
+          Veuillez entrer un mot de passe valide.
         </div>
       </div>
 
       <div class="forgot-password">
-        <a routerLink="/forgot-password">Forgot password?</a>
+        <a routerLink="/forgot-password">Mot de passe oublié?</a>
       </div>
 
       <button

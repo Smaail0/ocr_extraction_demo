@@ -20,6 +20,12 @@ export interface SignatureResult {
   genuine: boolean;
 }
 
+export interface DiagnoseResponseFR {
+  diagnostiques: string[];
+  medicament_hors_norme: string | null;
+  raw_response: string;
+}
+
 export interface FileUpload {
   id: number;
   filename: string;
@@ -73,9 +79,10 @@ export class DocumentsService {
 
   // Other existing methods...
   getBulletinById(id: number): Observable<Bulletin> {
-    return this.http
-      .get<Bulletin>(`${this.apiUrl}/bulletins/${id}`)
-      .pipe(catchError(this.handleError(`Error fetching bulletin ${id}`)));
+    return this.http.get<Bulletin>(`${this.apiUrl}/bulletins/${id}`).pipe(
+      tap((bulletin) => console.log('Fetched bulletin:', bulletin)),
+      catchError(this.handleError(`Error fetching bulletin ${id}`))
+    );
   }
 
   processBulletin(file: File): Observable<any> {
@@ -159,29 +166,6 @@ export class DocumentsService {
       );
   }
 
-  saveBulletinData(data: any, fileId?: number): Observable<Bulletin> {
-    // Build the base URL
-    let url = data.id
-      ? `${this.apiUrl}api/bulletins/${data.id}`
-      : `${this.apiUrl}api/bulletins/`;
-
-    // Append file_id only on creation (you can omit it on updates)
-    if (!data.id && fileId != null) {
-      url += `?file_id=${fileId}`;
-    }
-
-    // Use PUT for updates, POST for creation
-    if (data.id) {
-      return this.http
-        .put<Bulletin>(url, data)
-        .pipe(tap((b) => console.log('Bulletin updated:', b)));
-    } else {
-      return this.http
-        .post<Bulletin>(url, data)
-        .pipe(tap((b) => console.log('Bulletin created:', b)));
-    }
-  }
-
   createPrescription(
     dto: PrescriptionCreate,
     fileId?: number
@@ -233,7 +217,9 @@ export class DocumentsService {
       .post<Courier>(`${this.apiUrl}/courrier/${courierId}/files`, fd)
       .pipe(
         tap((c) => console.log('uploadAndParseFilesForCourier →', c)),
-        catchError(this.handleError('Error uploading/parsing files for courier'))
+        catchError(
+          this.handleError('Error uploading/parsing files for courier')
+        )
       );
   }
 
@@ -261,7 +247,9 @@ export class DocumentsService {
 
   getAllUploadedOrdonnances(): Observable<any[]> {
     return this.http.get<any[]>(`${this.apiUrl}/ordonnance/uploaded/all`).pipe(
-      tap((ordonnances) => console.log('Number of ordonnances fetched:', ordonnances.length)),
+      tap((ordonnances) =>
+        console.log('Number of ordonnances fetched:', ordonnances.length)
+      ),
       catchError((error) => {
         if (error.status === 404) {
           return of([]);
@@ -342,6 +330,15 @@ export class DocumentsService {
   }
 
   updateBulletin(id: number, dto: BulletinCreate) {
+    console.log('Updating bulletin with content:', dto);
     return this.http.put<Bulletin>(`${this.apiUrl}/bulletins/${id}`, dto);
+  }
+
+  getDiagnosesFR(
+    items: { produit: string; [key: string]: any }[]
+  ): Observable<DiagnoseResponseFR> {
+    return this.http.post<DiagnoseResponseFR>(`${this.apiUrl}/diagnose_fr`, {
+      items,
+    });
   }
 }

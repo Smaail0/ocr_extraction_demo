@@ -16,7 +16,9 @@ interface Document {
   id: number;
   type: 'prescription' | 'bulletin';
   date: string;
-  status: 'verified' | 'pending' | 'flagged' | 'missed';
+  status?: 'verified' | 'pending' | 'flagged' | 'missed';
+  is_verified?: boolean;
+  is_flagged?: boolean;
 }
 
 interface DocumentDetail {
@@ -27,6 +29,7 @@ interface DocumentDetail {
   date: string;
   status: string;
   is_verified?: boolean;
+  is_flagged?: boolean;
 }
 
 interface Courier {
@@ -43,6 +46,7 @@ interface Courier {
     uploaded_at: string;
 
     is_verified?: boolean;
+    is_flagged?: boolean;
     size_in_bytes?: number;
   }[];
   created_at: string;
@@ -74,7 +78,8 @@ export class DashboardComponent implements OnInit {
   ordonnancesCount = 0;
   pendingOrdonnances = 0;
   bulletinsCount = 0;
-  flaggedBulletins = 0;
+  pendingBulletins = 0;
+  flaggedDocuments = 0;
   newDocumentsThisWeek = 0;
   courriersCount = 0;
 
@@ -185,45 +190,32 @@ export class DashboardComponent implements OnInit {
   }
 
   loadAllDocuments() {
-    console.log('Starting to load documents');
-    this.isLoadingData = true;
-
     this.documentsService
       .getAllUploadedOrdonnances()
       .subscribe((ordonnances) => {
-        console.log('Raw ordonnances data:', ordonnances);
-
-        if (ordonnances.length > 0) {
-          console.log('Sample ordonnance fields:', Object.keys(ordonnances[0]));
-        }
-
-        const ordonnanceDocs = ordonnances.map((ord) => {
-          return {
-            id: ord.id,
-            type: 'prescription' as const,
-            date: ord.uploaded_at || new Date().toISOString(),
-            status: ord.status || 'missed',
-          };
-        });
+        console.log('ORDONNANCES PAYLOAD:', ordonnances);
+        const ordonnanceDocs: Document[] = ordonnances.map((ord) => ({
+          id: ord.id,
+          type: 'prescription' as const,
+          date: ord.uploaded_at,
+          is_verified: ord.is_verified,
+          is_flagged: ord.is_flagged, // ← make sure this field actually exists
+        }));
 
         this.documentsService
           .getAllUploadedBulletins()
           .subscribe((bulletins) => {
-            console.log('Bulletins:', bulletins);
-            const bulletinDocs = bulletins.map((bulletin) => {
-              return {
-                id: bulletin.id,
-                type: 'bulletin' as const,
-                date: bulletin.uploaded_at || new Date().toISOString(),
-                status: bulletin.status || 'verified',
-              };
-            });
+            console.log('BULLETINS PAYLOAD:', bulletins);
+            const bulletinDocs: Document[] = bulletins.map((bull) => ({
+              id: bull.id,
+              type: 'bulletin' as const,
+              date: bull.uploaded_at,
+              is_verified: bull.is_verified,
+              is_flagged: false, // bulletins never get flagged, so force false
+            }));
 
             this.documents = [...ordonnanceDocs, ...bulletinDocs];
             this.filteredDocuments = this.documents;
-            this.isLoadingData = false;
-
-            // Calculate stats
             this.calculateStats();
           });
       });
@@ -242,12 +234,16 @@ export class DashboardComponent implements OnInit {
 
     // Count pending ordonnances
     this.pendingOrdonnances = this.documents.filter(
-      (doc) => doc.type === 'prescription' && doc.status === 'pending'
+      (doc) => doc.type === 'prescription' && !doc.is_verified
     ).length;
 
     // Count flagged bulletins
-    this.flaggedBulletins = this.documents.filter(
-      (doc) => doc.type === 'bulletin' && doc.status === 'flagged'
+    this.pendingBulletins = this.documents.filter(
+      (doc) => doc.type === 'bulletin' && !doc.is_verified
+    ).length;
+
+    this.flaggedDocuments = this.documents.filter(
+      (doc) => doc.is_flagged
     ).length;
 
     // Count documents from the last 7 days
@@ -390,7 +386,9 @@ export class DashboardComponent implements OnInit {
   }
 
   openExtractedInNewTab(id: number) {
-    this.router.navigateByUrl(`/courriers/${id}/extracted`);
+    // Build the absolute URL to /courriers/:id/extracted
+    const url = `${window.location.origin}/courriers/${id}/extracted`;
+    window.open(url, '_blank');
   }
 
   // Row expansion methods
@@ -417,7 +415,6 @@ export class DashboardComponent implements OnInit {
     }
 
     return courier.files.map((file) => {
-      console.log('file type:', file.type);
       return {
         id: file.id,
         type: file.type,
@@ -425,7 +422,8 @@ export class DashboardComponent implements OnInit {
         fileSize: this.formatFileSize(file.size_in_bytes ?? 0),
         date: file.uploaded_at,
         is_verified: file.is_verified || false,
-        status: this.getFileStatus(file.type), // You might want to add actual status to file object
+        status: file.is_verified ? 'verified' : 'pending', // You might want to add actual status to file object
+        is_flagged: file.is_flagged || false,
       };
     });
   }

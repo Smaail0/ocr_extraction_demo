@@ -12,7 +12,11 @@
                 (click)="toggleEditMode()"
               >
                 <i class="bi bi-pencil-square me-1"></i>
-                {{ isEditMode ? "Save Changes" : "Verify Data" }}
+                {{
+                  isEditMode
+                    ? "Enregistrer les changements"
+                    : "Vérifier les données  "
+                }}
               </button>
             </div>
             <div *ngIf="showStatusAlert" class="status-alert">
@@ -170,6 +174,52 @@
         <!-- Prescription Table -->
         <div class="row mb-4">
           <div class="col-12">
+            <div
+              class="form-buttons d-flex justify-content-end align-items-center mb-1"
+            >
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                (click)="addItemRow()"
+                [disabled]="!isEditMode"
+              >
+                <i class="bi bi-plus-lg me-1"></i> Ajouter un article
+              </button>
+
+              <button
+                type="button"
+                class="btn-ai"
+                [class.loading]="isLoadingDiagnoses"
+                (click)="suggestDiagnosesFR()"
+                [disabled]="isLoadingDiagnoses || !prescription.items.length"
+              >
+                <i class="bi bi-lightbulb-fill me-2"></i>
+                {{ isLoadingDiagnoses ? "Recherche…" : "Suggérer diagnostics" }}
+                <!-- Looping spinner inside button when loading -->
+                <div *ngIf="isLoadingDiagnoses" class="loading-spinner"></div>
+              </button>
+            </div>
+
+            <div *ngIf="diagnoseError" class="alert alert-danger py-1">
+              {{ diagnoseError }}
+            </div>
+
+            <div
+              *ngIf="frDiagnostiques.length"
+              class="diagnosis-result-box mb-4"
+            >
+              <h5 class="result-title">Résultat des diagnostics :</h5>
+              <p class="result-text">
+                <strong>Diagnostiques :</strong>
+                {{ frDiagnostiques.join(", ") }}
+              </p>
+              <p *ngIf="frMedicamentHorsNorme" class="result-text">
+                <strong>Médicament hors norme :</strong>
+                {{ frMedicamentHorsNorme }}
+              </p>
+              <pre class="result-raw"><code>{{ frRawResponse }}</code></pre>
+            </div>
+
             <table class="prescription-table">
               <thead>
                 <tr>
@@ -306,8 +356,8 @@
           class="alert alert-warning"
         >
           <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
-          La découpe de la signature n’est pas toujours fiable à 100 % :
-          merci de vérifier avant de lancer l’analyse.
+          La découpe de la signature n’est pas toujours fiable à 100 % : merci
+          de vérifier avant de lancer l’analyse.
         </div>
 
         <!-- Signature -->
@@ -330,17 +380,20 @@
 
           <div class="signature-check">
             <button
-              class="btn btn-primary btn-sm"
+              type="button"
+              class="btn-ai"
+              [class.loading]="signatureLoading"
               (click)="analyseSignature()"
               [disabled]="signatureLoading || !prescription.id"
             >
               {{ signatureLoading ? "Vérification…" : "Vérifier la signature" }}
+              <div *ngIf="signatureLoading" class="loading-spinner"></div>
             </button>
           </div>
         </div>
 
         <!-- results -->
-        <div *ngIf="signatureResult" class="signature-result mt-3">
+        <div *ngIf="signatureResult" class="signature-result mt-1">
           <p>AKAZE score: {{ signatureResult.akaze | number : "1.2-2" }}</p>
           <p>SSIM score: {{ signatureResult.ssim | number : "1.2-2" }}</p>
           <p>

@@ -54,7 +54,7 @@ export class UploadDocComponent {
   constructor(
     private documentsService: DocumentsService,
     private router: Router,
-    private dialogRef: MatDialogRef<UploadDocComponent> 
+    private dialogRef: MatDialogRef<UploadDocComponent>
   ) {}
 
   ngOnInit() {
@@ -147,6 +147,9 @@ export class UploadDocComponent {
 
     this.uploadFiles.forEach((u) => (u.status = 'uploading'));
 
+    // 1) Open a blank tab immediately (so the browser knows it's user‐initiated)
+    const newTab = window.open('', '_blank');
+
     console.time('server‐upload');
     this.documentsService
       .uploadCourier(
@@ -166,11 +169,29 @@ export class UploadDocComponent {
         next: (courier) => {
           this.uploadFiles.forEach((u) => (u.status = 'success'));
           this.dialogRef.close();
-          this.router.navigate(['/courriers', courier.id, 'extracted']);
+
+          // 2) Once the server returns, build the real URL
+          const url = `${window.location.origin}/courriers/${courier.id}/extracted`;
+
+          // 3) Navigate the already‐opened tab to that URL
+          if (newTab) {
+            newTab.location.href = url;
+          } else {
+            // Fallback (if for some reason newTab is null), open in this tab:
+            window.open(url, '_blank');
+          }
+
+          // 4) Reload the current page (dashboard) so the new courier shows up
+          window.location.reload();
         },
         error: (err) => {
           this.uploadFiles.forEach((u) => (u.status = 'error'));
           this.serverError = err.error?.detail || 'Upload failed';
+
+          // If upload fails, close the blank tab immediately
+          if (newTab) {
+            newTab.close();
+          }
         },
       });
   }

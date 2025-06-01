@@ -19,7 +19,7 @@ DPI      = 300
 
 # Thresholds (tune on your genuine–genuine baseline)
 AKAZE_THRESHOLD = 0.5
-SSIM_THRESHOLD  = 0.75
+SSIM_THRESHOLD  = 0.75  
 
 client = ""
 

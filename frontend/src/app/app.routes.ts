@@ -12,7 +12,7 @@ import { PrescriptionComponent } from './components/prescription/prescription.co
 import { AdminGuard } from './guards/admin.guard';
 
 export const routes: Routes = [
-  { path: '', component: DashboardComponent },
+  { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
   { path: 'login', component: LoginComponent, data: { hideSidebar: true } },
   {
     path: 'dashboard',

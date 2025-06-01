@@ -50,7 +50,7 @@ export class ExtractedContainerComponent implements OnInit {
       this.router.getCurrentNavigation()?.extras.state ?? history.state;
     this.files = nav.files || [];
     this.selectedIndex = nav.selectedIndex || 0;
-    
+
     this.loadCurrent();
   }
 
@@ -74,13 +74,18 @@ export class ExtractedContainerComponent implements OnInit {
     this.loadCurrent();
   }
 
-  private loadCurrent() {
-    const tab = this.files[this.selectedIndex] as ExtractedTab;
+  public loadCurrent() {
+    const tab = this.files[this.selectedIndex];
     if (tab.type === 'bulletin') {
-      // you already have parsed data on `tab` itself
-      this.loadedBulletin = tab as unknown as Bulletin;
+      this.documentsService.getBulletinById(tab.docId).subscribe((fresh) => {
+        this.loadedBulletin = fresh;
+      });
     } else {
-      this.loadedPrescription = tab as unknown as Prescription;
+      this.documentsService
+        .getPrescriptionById(tab.docId)
+        .subscribe((fresh) => {
+          this.loadedPrescription = fresh;
+        });
     }
   }
 }

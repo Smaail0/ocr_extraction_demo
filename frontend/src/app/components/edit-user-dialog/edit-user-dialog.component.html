@@ -1,4 +1,4 @@
-<h2 mat-dialog-title>Edit User</h2>
+<h2 mat-dialog-title>Modifier l'utilisateur</h2>
 
 <mat-dialog-content [formGroup]="form" class="edit-dialog-content">
   <!-- Username -->
@@ -22,7 +22,7 @@
     <input
       matInput
       class="form-control rounded-pill"
-      placeholder="Username"
+      placeholder="Nom d'utilisateur"
       formControlName="username"
     />
   </div>
@@ -75,13 +75,13 @@
         id="password"
         class="form-control rounded-pill"
         formControlName="password"
-        placeholder="Password"
+        placeholder="Mot de passe"
       />
       <button
         type="button"
         class="input-group-text password-toggle clickable"
         (click)="toggleShowPassword()"
-        title="Toggle password visibility"
+        title="Afficher/Masquer le mot de passe"
       >
         <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
       </button>
@@ -91,17 +91,17 @@
   <!-- Active & Superuser checkboxes -->
   <div class="d-flex gap-4 mb-3">
     <mat-checkbox formControlName="is_active" class="form-check-inline">
-      Active
+      Actif
     </mat-checkbox>
     <mat-checkbox formControlName="is_superuser" class="form-check-inline">
-      Superuser
+      Super utilsateur
     </mat-checkbox>
   </div>
 </mat-dialog-content>
 
 <mat-dialog-actions class="justify-end dialog-actions">
   <button mat-stroked-button class="rounded-pill cancel-btn" (click)="cancel()">
-    Cancel
+    Annuler
   </button>
   <button
     mat-flat-button
@@ -110,6 +110,6 @@
     (click)="save()"
     [disabled]="form.invalid"
   >
-    Save
+    Enregistrer
   </button>
 </mat-dialog-actions>

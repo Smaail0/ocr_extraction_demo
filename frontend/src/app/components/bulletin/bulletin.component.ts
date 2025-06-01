@@ -4,6 +4,8 @@ import {
   OnInit,
   OnChanges,
   SimpleChanges,
+  Output,
+  EventEmitter,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -24,6 +26,8 @@ type TableRow = { [colKey: string]: string };
 export class BulletinComponent implements OnInit {
   @Input() fileId!: number;
   @Input() data!: Bulletin;
+
+  @Output() updated = new EventEmitter<Bulletin>();
 
   private mapRows(rows: any[], keys: string[]): TableRow[] {
     return (rows || []).map((r) => {
@@ -56,13 +60,13 @@ export class BulletinComponent implements OnInit {
     numTel: '',
     nomPrenomMalade: '',
     identifiant: Array(12).fill(''),
-    consultations: [] as TableRow[],
-    protheses: [] as TableRow[],
-    visites: [] as TableRow[],
+    consultationsDentaires: [] as TableRow[],
+    prothesesDentaires: [] as TableRow[],
+    consultationsVisites: [] as TableRow[],
     actesMedicaux: [] as TableRow[],
-    actesParam: [] as TableRow[],
+    actesParamed: [] as TableRow[],
     biologie: [] as TableRow[],
-    hospitals: [] as TableRow[],
+    hospitalisation: [] as TableRow[],
     pharmacie: [] as TableRow[],
     apci: false,
     mo: false,
@@ -78,12 +82,9 @@ export class BulletinComponent implements OnInit {
   isEditMode = false;
   showStatusAlert = false;
 
-  constructor(
-    private documentsService: DocumentsService,
-  ) {}
+  constructor(private documentsService: DocumentsService) {}
 
-  ngOnInit(): void {
-  }
+  ngOnInit(): void {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['data'] && this.data) {
@@ -115,10 +116,9 @@ export class BulletinComponent implements OnInit {
       prenomMalade: s.prenomMalade || '',
       nomMalade: s.nomMalade || '',
       dateNaissance: s.dateNaissance || '',
-      nomPrenomMalade: s.nomPrenomMalade || '',
+      numTel: s.numTel || '',
 
-      // remap tables (skip header row with .slice(1))
-      consultations: this.mapRows(s.consultationsDentaires || [], [
+      consultationsDentaires: this.mapRows(s.consultationsDentaires || [], [
         'date',
         'dent',
         'codeActe',
@@ -126,8 +126,8 @@ export class BulletinComponent implements OnInit {
         'honoraires',
         'codePs',
         'signature',
-      ]).slice(1),
-      protheses: this.mapRows(s.prothesesDentaires || [], [
+      ]),
+      prothesesDentaires: this.mapRows(s.prothesesDentaires || [], [
         'date',
         'dents',
         'codeActe',
@@ -135,47 +135,47 @@ export class BulletinComponent implements OnInit {
         'honoraires',
         'codePs',
         'signature',
-      ]).slice(1),
-      visites: this.mapRows(s.consultationsVisites || [], [
+      ]),
+      consultationsVisites: this.mapRows(s.consultationsVisites || [], [
         'date',
         'designation',
         'honoraires',
         'codePs',
         'signature',
-      ]).slice(1),
+      ]),
       actesMedicaux: this.mapRows(s.actesMedicaux || [], [
         'date',
         'designation',
         'honoraires',
         'codePs',
         'signature',
-      ]).slice(1),
-      actesParam: this.mapRows(s.actesParamed || [], [
+      ]),
+      actesParamed: this.mapRows(s.actesParamed || [], [
         'date',
         'designation',
         'honoraires',
         'codePs',
         'signature',
-      ]).slice(1),
+      ]),
       biologie: this.mapRows(s.biologie || [], [
         'date',
         'montant',
         'codePs',
         'signature',
-      ]).slice(1),
-      hospitals: this.mapRows(s.hospitalisation || [], [
+      ]),
+      hospitalisation: this.mapRows(s.hospitalisation || [], [
         'date',
         'codeHosp',
         'forfait',
         'codeClinique',
         'signature',
-      ]).slice(1),
+      ]),
       pharmacie: this.mapRows(s.pharmacie || [], [
         'date',
         'montant',
         'codePs',
         'signature',
-      ]).slice(1),
+      ]),
 
       apci: !!s.apci,
       mo: !!s.mo,
@@ -226,7 +226,7 @@ export class BulletinComponent implements OnInit {
       adresse: this.formData.adresse,
       codePostal: this.formData.codePostal,
       refDossier: this.formData.refDossier,
-      identifiantUnique: this.formData.identifiant.join(''),
+      identifiantUnique: this.formData.identifiantUnique,
       cnss: this.formData.cnss,
       cnrps: this.formData.cnrps,
       convbi: this.formData.convbi,
@@ -237,16 +237,15 @@ export class BulletinComponent implements OnInit {
       prenomMalade: this.formData.prenomMalade,
       nomMalade: this.formData.nomMalade,
       dateNaissance: this.formData.dateNaissance,
-      numTel: this.formData.numTel,
-      nomPrenomMalade: this.formData.nomPrenomMalade,
+      numTel: this.formData.numTel, // ← must include this
 
-      consultationsDentaires: this.formData.consultations,
-      prothesesDentaires: this.formData.protheses,
-      consultationsVisites: this.formData.visites,
+      consultationsDentaires: this.formData.consultationsDentaires,
+      prothesesDentaires: this.formData.prothesesDentaires,
+      consultationsVisites: this.formData.consultationsVisites,
       actesMedicaux: this.formData.actesMedicaux,
-      actesParamed: this.formData.actesParam,
+      actesParamed: this.formData.actesParamed,
       biologie: this.formData.biologie,
-      hospitalisation: this.formData.hospitals,
+      hospitalisation: this.formData.hospitalisation,
       pharmacie: this.formData.pharmacie,
 
       apci: this.formData.apci,
@@ -256,30 +255,17 @@ export class BulletinComponent implements OnInit {
       codeApci: this.formData.codeApci,
       dateAccouchement: this.formData.dateAccouchement,
     };
-    console.log(
-      '📝 saveChanges(): formData.id =',
-      this.formData.id,
-      'fileId =',
-      this.fileId
-    );
 
-    // We already loaded formData.id in ngOnInit, so always update:
-    this.documentsService.updateBulletin(this.formData.id!, payload).subscribe({
-      next: (updated) => this.populateForm(updated),
-      error: (err) => {
-        console.error('❌ Update failed:', err);
-        alert('Échec de la mise à jour.');
+    this.documentsService.updateBulletin(this.data.id!, payload).subscribe({
+      next: (updatedBulletin: Bulletin) => {
+        // overwrite local copy & re‐populate the form
+        this.data = updatedBulletin;
+        this.populateForm(updatedBulletin);
+        this.updated.emit();
       },
-    });
-  }
-
-  onSubmit(): void {
-    const payload = this.getCompleteFormData();
-    this.documentsService.saveBulletinData(payload, this.fileId).subscribe({
-      next: () => alert('Document submitted successfully!'),
       error: (err) => {
-        console.error('Submit error', err);
-        alert('Failed to submit document.');
+        console.error('Update failed:', err);
+        alert('Échec de la mise à jour.');
       },
     });
   }
@@ -290,6 +276,119 @@ export class BulletinComponent implements OnInit {
       identifiantUnique: this.identifiant.join(''),
       id: this.formData.id,
     };
+  }
+
+  addConsultationRow(): void {
+    // Make sure formData.consultations is an array:
+    if (!Array.isArray(this.formData.consultationsDentaires)) {
+      this.formData.consultationsDentaires = [];
+    }
+
+    // Push a brand‐new, blank row (all fields initialized to empty string).
+    this.formData.consultationsDentaires.push({
+      date: '',
+      dent: '',
+      codeActe: '',
+      cotation: '',
+      honoraires: '',
+      codePs: '',
+      signature: '',
+    });
+  }
+
+  addProtheseRow(): void {
+    if (!Array.isArray(this.formData.prothesesDentaires)) {
+      this.formData.prothesesDentaires = [];
+    }
+    this.formData.prothesesDentaires.push({
+      date: '',
+      dents: '',
+      codeActe: '',
+      cotation: '',
+      honoraires: '',
+      codePs: '',
+      signature: '',
+    });
+  }
+
+  addVisiteRow(): void {
+    if (!Array.isArray(this.formData.consultationsVisites)) {
+      this.formData.consultationsVisites = [];
+    }
+    this.formData.consultationsVisites.push({
+      date: '',
+      designation: '',
+      honoraires: '',
+      codePs: '',
+      signature: '',
+    });
+  }
+
+  addActeMedicalRow(): void {
+    if (!Array.isArray(this.formData.actesMedicaux)) {
+      this.formData.actesMedicaux = [];
+    }
+    this.formData.actesMedicaux.push({
+      date: '',
+      designation: '',
+      honoraires: '',
+      codePs: '',
+      signature: '',
+    });
+  }
+
+  // 5) “+ Ajouter” for Actes Paramédicaux
+  addActeParamRow(): void {
+    if (!Array.isArray(this.formData.actesParamed)) {
+      this.formData.actesParamed = [];
+    }
+    this.formData.actesParamed.push({
+      date: '',
+      designation: '',
+      honoraires: '',
+      codePs: '',
+      signature: '',
+    });
+  }
+
+  // 6) “+ Ajouter” for Biologie
+  addBiologieRow(): void {
+    if (!Array.isArray(this.formData.biologie)) {
+      this.formData.biologie = [];
+    }
+    this.formData.biologie.push({
+      date: '',
+      montant: '',
+      codePs: '',
+      signature: '',
+    });
+  }
+
+  // 7) “+ Ajouter” for Accouchement / Hospitalisation
+  addHospitalRow(): void {
+    if (!Array.isArray(this.formData.hospitalisation)) {
+      this.formData.hospitalisation = [];
+    }
+    this.formData.hospitalisation.push({
+      date: '',
+      codeHosp: '',
+      forfait: '',
+      codeClinique: '',
+      signature: '',
+    });
+  }
+
+  // 8) “+ Ajouter” for Pharmacie
+  addPharmacieRow(): void {
+    if (!Array.isArray(this.formData.pharmacie)) {
+      this.formData.pharmacie = [];
+    }
+    this.formData.pharmacie.push({
+      date: '',
+      montant: '',
+      codePs: '',
+      signature: '',
+    });
   }
 
   onCheckboxChange(checkboxName: string): void {

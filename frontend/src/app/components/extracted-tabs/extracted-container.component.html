@@ -1,11 +1,12 @@
 <ng-container *ngIf="files.length > 0; else noFiles">
   <!-- 1) the tabs bar with + -->
- <app-extracted-tabs
-   [files]="files"
-   [(selectedIndex)]="selectedIndex"
-   (selectedIndexChange)="onTabSelected($event)"
-   (plusClick)="onAddMore()">
- </app-extracted-tabs>
+  <app-extracted-tabs
+    [files]="files"
+    [(selectedIndex)]="selectedIndex"
+    (selectedIndexChange)="onTabSelected($event)"
+    (plusClick)="onAddMore()"
+  >
+  </app-extracted-tabs>
 
   <!-- 2) if they clicked +, show the inline uploader -->
   <div *ngIf="addingMore" class="mt-4">
@@ -20,18 +21,20 @@
   <!-- 3) otherwise show the detail panel -->
   <main *ngIf="!addingMore" class="mt-4">
     <ng-container [ngSwitch]="files[selectedIndex].type">
-
-        <app-prescription
-          *ngIf="loadedPrescription"
-          [prescription]="loadedPrescription!"
-          [fileId]="files[selectedIndex].id">
-        </app-prescription>
-
+      <app-prescription
+        *ngIf="loadedPrescription"
+        [prescription]="loadedPrescription!"
+        [fileId]="files[selectedIndex].id"
+      >
+      </app-prescription>
+      <ng-container *ngSwitchCase="'bulletin'">
         <app-bulletin
           *ngIf="loadedBulletin"
-          [data]="loadedBulletin!"
-          [fileId]="files[selectedIndex].id">
-        </app-bulletin>
+          [data]="loadedBulletin"
+          [fileId]="files[selectedIndex].id"
+          (updated)="loadCurrent()"
+        ></app-bulletin>
+      </ng-container>
     </ng-container>
   </main>
 </ng-container>

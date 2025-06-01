@@ -95,6 +95,7 @@ class Prescription(Base):
     )
     
     is_verified = Column(Boolean, default=False)
+    is_flagged = Column(Boolean, default=False)
 
 class FileUpload(Base):
     __tablename__ = "file_uploads"
@@ -129,6 +130,10 @@ class FileUpload(Base):
     @property
     def is_verified(self):
         return self.prescription.is_verified if self.prescription else self.bulletin.is_verified if self.bulletin else False
+    
+    @property
+    def is_flagged(self):
+        return self.prescription.is_flagged if self.prescription else False
     
 class User(Base):
     __tablename__ = "users"

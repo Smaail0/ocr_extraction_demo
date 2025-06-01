@@ -370,3 +370,111 @@ h3 {
   border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
+
+.btn-ai {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.93rem;
+  font-weight: 500;
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    #7f00ff 0%,
+    #e100ff 25%,
+    #ff3ecb 50%,
+    #ff47a1 75%,
+    #e100ff 100%
+  );
+  background-size: 200% 200%;   /* make gradient 2× as big to allow movement */
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.1s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-ai:hover {
+  /* slightly scale up on hover */
+  transform: scale(1.02);
+}
+
+.btn-ai:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-ai.loading {
+  animation: gradientFlow 3s linear infinite;
+}
+
+/* ------------------------------------------------------
+   2) Loading Spinner Animation inside the button
+   ------------------------------------------------------ */
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-top: 2px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Keyframes for spinner rotation */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* ------------------------------------------------------
+   3) Diagnosis result box with colorful gradient card
+   ------------------------------------------------------ */
+.diagnosis-result-box {
+  background: linear-gradient(135deg, #f0f4ff, #d0e2ff);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.5rem;
+}
+
+.result-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.result-text {
+  margin: 0.3rem 0;
+  font-size: 0.95rem;
+  color: #222;
+}
+
+.result-raw {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 0.6rem;
+  margin-top: 0.6rem;
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  color: #444;
+}

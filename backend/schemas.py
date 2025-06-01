@@ -64,41 +64,40 @@ class BulletinBase(BaseModel):
     codePostal:        Optional[str] = None
     prenomMalade:      Optional[str] = None
     nomMalade:         Optional[str] = None
-    assureSocial:      bool = False
-    conjoint:          bool = False
-    enfant:            bool = False
-    ascendant:         bool = False
+    assureSocial:      bool           = False
+    conjoint:          bool           = False
+    enfant:            bool           = False
+    ascendant:         bool           = False
     dateNaissance:     Optional[str] = None
     numTel:            Optional[str] = None
     refDossier:        Optional[str] = None
     identifiantUnique: Optional[str] = None
-    cnss:              bool = False
-    cnrps:             bool = False
-    convbi:            bool = False
+    cnss:              bool           = False
+    cnrps:             bool           = False
+    convbi:            bool           = False
     patientType:       Optional[str] = None
 
-    consultationsDentaires: List[Dict[str,str]] = Field(default_factory=list, alias="consultationsDentaires")
-    prothesesDentaires:     List[Dict[str,str]] = Field(default_factory=list, alias="prothesesDentaires")
-    consultationsVisites:   List[Dict[str,str]] = Field(default_factory=list, alias="consultationsVisites")
-    actesMedicaux:          List[Dict[str,str]] = Field(default_factory=list, alias="actesMedicaux")
-    actesParamed:           List[Dict[str,str]] = Field(default_factory=list, alias="actesParamed")
-    biologie:               List[Dict[str,str]] = Field(default_factory=list, alias="biologie")
-    hospitalisation:        List[Dict[str,str]] = Field(default_factory=list, alias="hospitalisation")
-    pharmacie:              List[Dict[str,str]] = Field(default_factory=list, alias="pharmacie")
+    # —–– 1b) Here are ALL of your JSON columns, named exactly as on the model:
+    consultationsDentaires: List[Dict[str, str]] = Field(default_factory=list)
+    prothesesDentaires:     List[Dict[str, str]] = Field(default_factory=list)
+    consultationsVisites:   List[Dict[str, str]] = Field(default_factory=list)
+    actesMedicaux:          List[Dict[str, str]] = Field(default_factory=list)
+    actesParamed:           List[Dict[str, str]] = Field(default_factory=list)
+    biologie:               List[Dict[str, str]] = Field(default_factory=list)
+    hospitalisation:        List[Dict[str, str]] = Field(default_factory=list)
+    pharmacie:              List[Dict[str, str]] = Field(default_factory=list)
 
-    apci:             bool = False
-    mo:               bool = False
-    hosp:             bool = False
-    grossesse:        bool = False
+    apci:             bool           = False
+    mo:               bool           = False
+    hosp:             bool           = False
+    grossesse:        bool           = False
+    codeApci:         Optional[str] = None
+    dateAccouchement: Optional[str] = None
 
-    codeApci:         Optional[str] = Field(None, alias="codeApci")
-    dateAccouchement: Optional[str] = Field(None, alias="dateAccouchement")
-    
-    
     class Config:
-        allow_population_by_field_name = True
-        validate_by_name = True
-        from_attributes = True
+        # This lets Pydantic read directly from a SQLAlchemy model
+        orm_mode = True
+        # (or in Pydantic v2 you would do `from_attributes = True`)
         
 class BulletinCreate(BulletinBase):
     identifiantUnique: str
@@ -116,6 +115,7 @@ class UploadedFileInfo(BaseModel):
     bulletin_id: Optional[int] = None
     
     is_verified: bool
+    is_flagged: bool
 
     class Config:
         orm_mode = True
@@ -216,3 +216,17 @@ class UserUpdate(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    
+# 1) Define a Pydantic schema for the request body
+class PrescriptionItem(BaseModel):
+    codePCT: Optional[str]    # not strictly required, but included for clarity
+    produit: str
+    # you can add other fields (forme, qte, etc.) if desired
+
+class DiagnoseRequest(BaseModel):
+    items: List[PrescriptionItem]
+
+class DiagnoseResponseFR(BaseModel):
+    diagnostiques: List[str]
+    medicament_hors_norme: Optional[str]
+    raw_response: str

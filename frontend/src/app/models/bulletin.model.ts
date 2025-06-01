@@ -23,25 +23,22 @@ export interface Bulletin {
   prenomMalade: string;
   nomMalade: string;
   dateNaissance: string;
-  numTel: string;
-  nomPrenomMalade: string;
-
+  numTel: string; // ← exactly same as Pydantic
+  // remove nomPrenomMalade, it does not exist in Pydantic
   consultationsDentaires: TableRow[];
-  prothesesDentaires:     TableRow[];
-  consultationsVisites:   TableRow[];
-  actesMedicaux:          TableRow[];
-  actesParamed:           TableRow[];
-  biologie:               TableRow[];
-  hospitalisation:        TableRow[];
-  pharmacie:              TableRow[];
-
+  prothesesDentaires: TableRow[];
+  consultationsVisites: TableRow[];
+  actesMedicaux: TableRow[];
+  actesParamed: TableRow[];
+  biologie: TableRow[];
+  hospitalisation: TableRow[];
+  pharmacie: TableRow[];
   apci: boolean;
   mo: boolean;
   hosp: boolean;
   grossesse: boolean;
   codeApci: string;
   dateAccouchement: string | null;
-
   created_at: string;
   updated_at: string;
   is_verified: boolean;
