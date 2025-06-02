@@ -1,6 +1,5 @@
 <!-- src/app/components/upload-doc/upload-doc.component.html -->
 <div class="workflow">
-
   <div class="upload-container">
     <div *ngIf="serverError" class="alert alert-danger w-100 mx-0 mb-3">
       {{ serverError }}
@@ -25,7 +24,7 @@
 
           <p class="text-muted small mb-2" align="center">
             Veuillez télécharger uniquement les deux documents (Bulletin +
-            Ordonnance) 
+            Ordonnance)
           </p>
           <!-- Zone de dépôt -->
           <div
@@ -60,6 +59,13 @@
             </ng-template>
           </div>
 
+          <div
+            *ngIf="submitted && uploadFiles.length === 0"
+            class="text-danger small mt-2"
+          >
+            Au moins un fichier est requis.
+          </div>
+
           <!-- Exigences -->
           <div class="mb-4 text-muted small">
             <strong>Exigences:</strong>
@@ -68,12 +74,14 @@
               <li>Formats acceptés: PDF, JPG, PNG</li>
             </ul>
           </div>
-          
+
           <!-- Enhanced form inputs with better styling -->
           <div class="patient-info-section my-4 p-3 border rounded bg-light">
             <h6 class="mb-3 border-bottom pb-2">Informations du courier</h6>
             <div class="form-group row mb-3">
-              <label for="matricule-fiscale" class="col-sm-4 col-form-label">Matricule :</label>
+              <label for="matricule-fiscale" class="col-sm-4 col-form-label"
+                >Matricule :</label
+              >
               <div class="col-sm-8">
                 <input
                   type="text"
@@ -81,13 +89,23 @@
                   id="matricule-fiscale"
                   class="form-control form-control-sm"
                   [(ngModel)]="formData.matFisc"
-                  placeholder="Entrez le matricule fiscale"
+                  placeholder="Entrez le matricule"
+                  #matFiscInput="ngModel"
+                  required
                 />
+                <div
+                  *ngIf="matFiscInput.touched && matFiscInput.invalid"
+                  class="text-danger small mt-1"
+                >
+                  Le matricule fiscale est requis.
+                </div>
               </div>
             </div>
-            
+
             <div class="form-group row mb-3">
-              <label for="nom-adherent" class="col-sm-4 col-form-label">Nom et Prénom Adhérent:</label>
+              <label for="nom-adherent" class="col-sm-4 col-form-label"
+                >Nom et Prénom Adhérent:</label
+              >
               <div class="col-sm-8">
                 <input
                   type="text"
@@ -96,12 +114,23 @@
                   class="form-control form-control-sm"
                   [(ngModel)]="formData.nomAdhe"
                   placeholder="Entrez le nom complet de l'adhérent"
+                  #nomAdheInput="ngModel"
+                  required
                 />
+                <!-- Message d’erreur si soumis et vide -->
+                <div
+                  *ngIf="nomAdheInput.touched && nomAdheInput.invalid"
+                  class="text-danger small mt-1"
+                >
+                  Le nom et prénom de l'adhérent sont requis.
+                </div>
               </div>
             </div>
-            
+
             <div class="form-group row mb-3">
-              <label for="nom-benef" class="col-sm-4 col-form-label">Nom et Prénom Bénéficiaire:</label>
+              <label for="nom-benef" class="col-sm-4 col-form-label"
+                >Nom et Prénom Bénéficiaire:</label
+              >
               <div class="col-sm-8">
                 <input
                   type="text"
@@ -110,7 +139,18 @@
                   class="form-control form-control-sm"
                   [(ngModel)]="formData.nomBenef"
                   placeholder="Entrez le nom complet du bénéficiaire"
+                  #nomBenefInput="ngModel"
+                  required
                 />
+
+                <div>
+                  <div
+                    *ngIf="nomBenefInput.touched && nomBenefInput.invalid"
+                    class="text-danger small mt-1"
+                  >
+                    Le nom et prénom du bénéficiaire sont requis.
+                  </div>
+                </div>
               </div>
             </div>
           </div>

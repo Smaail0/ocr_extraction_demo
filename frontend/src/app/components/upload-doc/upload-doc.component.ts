@@ -48,6 +48,8 @@ export class UploadDocComponent {
   isUploading = false;
   serverError: string | null = null;
 
+  submitted = false;
+
   readonly MAX_FILES = 5;
   readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
@@ -67,7 +69,8 @@ export class UploadDocComponent {
 
   get isSubmitDisabled() {
     return (
-      this.uploadFiles.length == this.MAX_FILES || this.uploadFiles.length === 0 ||
+      this.uploadFiles.length == this.MAX_FILES ||
+      this.uploadFiles.length === 0 ||
       !this.formData.matFisc ||
       !this.formData.nomAdhe ||
       !this.formData.nomBenef ||
@@ -141,14 +144,24 @@ export class UploadDocComponent {
   }
 
   uploadDocuments() {
+    this.submitted = true;
+
+
     if (this.isSubmitDisabled) return;
     this.serverError = null;
     this.isUploading = true;
 
     this.uploadFiles.forEach((u) => (u.status = 'uploading'));
 
-    // 1) Open a blank tab immediately (so the browser knows it's user‐initiated)
-    const newTab = window.open('', '_blank');
+    // ───────────────
+    // 1) Immediately open the “/loading” route in a new tab
+    // ───────────────
+    //    • Make sure you have a route defined for “/loading” in your Angular router.
+    //    • E.g. { path: 'loading', component: LoadingComponent }
+    //
+    const loadingUrl = `${window.location.origin}/loading`;
+    const newTab = window.open(loadingUrl, '_blank');
+    //                                        ↑ your front-end must actually serve this route
 
     console.time('server‐upload');
     this.documentsService
@@ -170,25 +183,31 @@ export class UploadDocComponent {
           this.uploadFiles.forEach((u) => (u.status = 'success'));
           this.dialogRef.close();
 
-          // 2) Once the server returns, build the real URL
-          const url = `${window.location.origin}/courriers/${courier.id}/extracted`;
+          // ───────────────
+          // 2) Build the real URL once server gives us the new ID
+          // ───────────────
+          const finalUrl = `${window.location.origin}/courriers/${courier.id}/extracted`;
 
-          // 3) Navigate the already‐opened tab to that URL
+          // ─────────────────────────────
+          // 3) Redirect that blank “loading” tab to final URL:
+          // ─────────────────────────────
           if (newTab) {
-            newTab.location.href = url;
+            newTab.location.href = finalUrl;
           } else {
-            // Fallback (if for some reason newTab is null), open in this tab:
-            window.open(url, '_blank');
+            // If pop‐ups are blocked (newTab===null), open in a new window instead
+            window.open(finalUrl, '_blank');
           }
 
-          // 4) Reload the current page (dashboard) so the new courier shows up
+          // ─────────────────────────────
+          // 4) And refresh the dashboard in the original tab:
+          // ─────────────────────────────
           window.location.reload();
         },
         error: (err) => {
           this.uploadFiles.forEach((u) => (u.status = 'error'));
           this.serverError = err.error?.detail || 'Upload failed';
 
-          // If upload fails, close the blank tab immediately
+          // If upload fails, close the blank loading tab:
           if (newTab) {
             newTab.close();
           }

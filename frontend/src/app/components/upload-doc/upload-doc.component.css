@@ -86,4 +86,41 @@
     margin-top: 0.25rem;
   }
 
+  @keyframes skeleton-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: #2a2a2a;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  background-repeat: no-repeat;
+  background-size: 200px 100%;
+  animation: skeleton-shimmer 1.2s infinite ease-in-out;
+}
+
+.skeleton.rounded {
+  border-radius: 0.25rem;
+}
+
   

@@ -1,4 +1,8 @@
 export const environment = {
-    production: true,
-    apiBaseUrl: 'https://api.yourdomain.com'
+  production: false,
+
+  // URL de développement vers votre backend local
+  apiBaseUrl: 'http://localhost:8000/api',
+  authUrl: 'http://localhost:8000/login',
+  // (si vous avez d’autres services)
 };

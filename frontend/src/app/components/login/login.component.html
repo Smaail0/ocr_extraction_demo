@@ -1,10 +1,15 @@
 <div class="auth-container">
   <div class="auth-card">
+    <!-- 1) Centered logo wrapper -->
+    <div class="auth-logo">
+      <img src="/image.png" alt="Logo" />
+    </div>
+
     <h2 class="auth-title">Se connecter</h2>
-    <br>
+    <p class="auth-subtitle">Veuillez se connecter pour continuer.</p>
 
     <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
-      <!-- Email / Phone -->
+      <!-- Email field -->
       <div class="form-group">
         <input
           formControlName="email"
@@ -13,10 +18,12 @@
           class="input-field"
         />
         <div
-          *ngIf="loginForm.get('email')?.touched && loginForm.get('email')?.invalid"
+          *ngIf="
+            loginForm.get('email')?.touched && loginForm.get('email')?.invalid
+          "
           class="error"
         >
-          Veuiller entrer un email valide.
+          Veuillez entrer un email valide.
         </div>
       </div>
 
@@ -33,10 +40,13 @@
           class="toggle-password"
           (click)="toggleShowPassword()"
         >
-          {{ showPassword ? 'Masquer' : 'Afficher' }}
+          {{ showPassword ? "Masquer" : "Afficher" }}
         </button>
         <div
-          *ngIf="loginForm.get('password')?.touched && loginForm.get('password')?.invalid"
+          *ngIf="
+            loginForm.get('password')?.touched &&
+            loginForm.get('password')?.invalid
+          "
           class="error"
         >
           Veuillez entrer un mot de passe valide.
@@ -44,19 +54,21 @@
       </div>
 
       <div class="forgot-password">
-        <a routerLink="/forgot-password">Mot de passe oublié?</a>
+        <a href="#" (click)="onForgotPassword($event)">
+          Mot de passe oublié ?
+        </a>
       </div>
 
-      <button
-        type="submit"
-        class="btn-primary"
-        [disabled]="loginForm.invalid"
-      >
-        Sign in
-    </button>
-    <div align = "center"
-     *ngIf="errorMsg" class="error">{{ errorMsg }}
-    </div>
+      <button type="submit" class="btn-primary" [disabled]="loginForm.invalid">
+        Se connecter
+        <span class="loading-spinner" *ngIf="loading"></span>
+      </button>
+
+      <div class="forgot-password">
+        <a href="#" (click)="onForgotPassword($event)">
+          Mot de passe oublié ?
+        </a>
+      </div>
     </form>
   </div>
 </div>

@@ -10,6 +10,7 @@ import { CourierDetailComponent } from './components/courier-detail/courier-deta
 import { BulletinComponent } from './components/bulletin/bulletin.component';
 import { PrescriptionComponent } from './components/prescription/prescription.component';
 import { AdminGuard } from './guards/admin.guard';
+import { LoadingComponent } from './loading/loading.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
@@ -19,6 +20,9 @@ export const routes: Routes = [
     component: DashboardComponent,
     canActivate: [AuthGuard],
   },
+
+  { path: 'loading', component: LoadingComponent, data: { hideSidebar: true } },
+
   { path: 'admin', component: AdminPanelComponent, canActivate: [AdminGuard] },
   {
     path: 'extracted',

@@ -13,6 +13,7 @@ import { catchError, tap, map, filter } from 'rxjs/operators';
 import { Bulletin } from '../models/bulletin.model';
 import { BulletinCreate } from '../models/bulletin.model';
 import { Courier } from '../models/courier.model';
+import { environment } from '../../environments/environment';
 
 export interface SignatureResult {
   akaze: number;
@@ -45,7 +46,7 @@ export class DocumentsService {
   deleteDocument(documentId: number) {
     throw new Error('Method not implemented.');
   }
-  private apiUrl = 'http://localhost:8000/api'; // Base API URL
+  private apiUrl = environment.apiBaseUrl; // Base API URL
 
   constructor(private http: HttpClient) {}
 
@@ -327,6 +328,14 @@ export class DocumentsService {
         : {};
 
     return this.http.post<Bulletin>(`${this.apiUrl}/bulletins`, dto, opts);
+  }
+
+  getCourierById(courierId: number): Observable<Courier> {
+    // Assume your FastAPI has an endpoint GET /api/courriers/{id}
+    return this.http.get<Courier>(`${this.apiUrl}/courriers/${courierId}`).pipe(
+      tap((c) => console.log(`Fetched courier ${courierId}:`, c)),
+      catchError(this.handleError(`Error fetching courier ${courierId}`))
+    );
   }
 
   updateBulletin(id: number, dto: BulletinCreate) {

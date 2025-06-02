@@ -1,24 +1,74 @@
+/* =========================================================================
+   1) Make sure the host fills the whole viewport
+   ========================================================================= */
 :host {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background-color: var(--gray-100);
+  position: relative;        /* so the ::before can be positioned absolutely */
+  overflow: hidden;          /* prevent scrollbars when blurred edges extend */
 }
 
+/* =========================================================================
+   2) Add a blurred background via a ::before pseudo-element
+   ========================================================================= */
+:host::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+
+  /* Your background image (adjust path if needed) */
+  background-image: url('/background_image.png');
+  background-size: cover;         /* cover entire area */
+  background-position: center;    /* center the image */
+  background-repeat: no-repeat;   /* do not tile */
+
+  /* Apply a small blur—adjust “4px” as desired */
+  filter: blur(4px);
+  -webkit-filter: blur(4px);
+
+  z-index: -1;    /* send behind everything inside :host */
+}
+
+/* =========================================================================
+   3) Now your existing .auth-container and .auth-card rules stay largely
+      the same (they'll sit on top of the blurred background).
+   ========================================================================= */
+/* 3.1) Wider container */
 .auth-container {
   width: 100%;
-  max-width: 360px;
+  max-width: 420px;     /* keep card width at 420px */
   padding: 0 1rem;
+  z-index: 1;           /* bring the container above the blurred layer */
 }
 
+/* 3.2) Card styling (opaque white) */
 .auth-card {
   background: #fff;
-  padding: 2rem;
+  padding: 1.5rem 2rem;
   border-radius: 0.75rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  position: relative;   /* ensure stacking context over ::before */
+  z-index: 2;           /* definitely above the blurred background */
 }
 
+/* 3.3) Center the logo */
+.auth-logo {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.auth-logo img {
+  max-width: 120px;
+  width: 100%;
+  height: auto;
+}
+
+/* 3.4) Title & subtitle */
 .auth-title {
   margin: 0;
   font-size: 1.75rem;
@@ -34,6 +84,7 @@
   text-align: center;
 }
 
+/* 3.5) Form fields */
 .form-group {
   position: relative;
   margin-bottom: 1.25rem;
@@ -51,7 +102,7 @@
 .input-field:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(67,97,238,0.2);
+  box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.2);
 }
 
 .password-group {
@@ -60,9 +111,8 @@
 
 .password-group .toggle-password {
   position: absolute;
-  top: 0.75rem;      
+  top: 0.75rem;
   right: 1rem;
-  transform: none;   
   background: transparent;
   border: none;
   font-size: 0.875rem;
@@ -72,6 +122,7 @@
   padding: 0;
 }
 
+/* 3.6) “Forgot password?” */
 .forgot-password {
   text-align: right;
   margin-bottom: 1.5rem;
@@ -87,6 +138,7 @@
   text-decoration: underline;
 }
 
+/* 3.7) Primary button */
 .btn-primary {
   width: 100%;
   padding: 0.75rem;
@@ -109,7 +161,7 @@
   background-color: var(--primary-light);
 }
 
-/* validation error text */
+/* 3.8) Validation error text */
 .error {
   margin-top: 0.25rem;
   font-size: 0.875rem;

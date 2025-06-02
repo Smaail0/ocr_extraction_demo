@@ -1,6 +1,6 @@
 // extracted-container.component.ts
 import { Component, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 
 import { ExtractedTabsComponent } from './extracted-tabs.component';
@@ -36,22 +36,64 @@ export class ExtractedContainerComponent implements OnInit {
   files: ExtractedTab[] = [];
   selectedIndex = 0;
   addingMore = false;
+  isLoading = false;
+
+  courierId!: number;
 
   loadedBulletin: Bulletin | null = null;
   loadedPrescription: Prescription | null = null;
 
   constructor(
     private router: Router,
+    private route: ActivatedRoute,
     private documentsService: DocumentsService
   ) {}
 
   ngOnInit() {
-    const nav =
+    // 1) Read any provided navigation state (router.navigate({ state: { files, selectedIndex } }))
+    const navState =
       this.router.getCurrentNavigation()?.extras.state ?? history.state;
-    this.files = nav.files || [];
-    this.selectedIndex = nav.selectedIndex || 0;
 
-    this.loadCurrent();
+    // 2) Read the :id parameter from the URL
+    this.courierId = Number(this.route.snapshot.paramMap.get('id'));
+
+    if (
+      Array.isArray(navState.files) &&
+      (navState.files as ExtractedTab[]).length > 0
+    ) {
+      // If we have “files” passed via router.state, just re‐use them:
+      this.files = navState.files as ExtractedTab[];
+      this.selectedIndex = navState.selectedIndex || 0;
+      // Load the detail for the first tab:
+      this.loadCurrent();
+    } else {
+      // No router.state.files → fetch from the server
+      this.fetchFilesFromServer();
+    }
+  }
+
+  private fetchFilesFromServer() {
+    this.isLoading = true;
+
+    this.documentsService.getCourierById(this.courierId).subscribe({
+      next: (courier) => {
+        // We expect courier.files to be an array of FileUpload-like objects,
+        // which we coerce into ExtractedTab[] for simplicity here.
+        // Adjust field‐mapping as needed if your backend gives slightly different keys.
+        this.files = (courier.files || []).map((f) => ({
+          id: f.id,
+          docId: f.prescription_id ?? f.bulletin_id!,
+          type: f.type as 'bulletin' | 'prescription',
+        }));
+        this.selectedIndex = 0;
+        this.loadCurrent();
+      },
+      error: (_) => {
+        console.error(`Failed to load courier ${this.courierId}`);
+        this.files = [];
+        this.isLoading = false;
+      },
+    });
   }
 
   onAddMore() {
@@ -75,17 +117,40 @@ export class ExtractedContainerComponent implements OnInit {
   }
 
   public loadCurrent() {
+    if (!this.files.length) {
+      this.isLoading = false;
+      return;
+    }
+
+    this.isLoading = true;
     const tab = this.files[this.selectedIndex];
+
     if (tab.type === 'bulletin') {
-      this.documentsService.getBulletinById(tab.docId).subscribe((fresh) => {
-        this.loadedBulletin = fresh;
+      this.documentsService.getBulletinById(tab.docId).subscribe({
+        next: (fresh) => {
+          this.loadedBulletin = fresh;
+          this.loadedPrescription = null;
+          this.isLoading = false;
+        },
+        error: (_) => {
+          console.error(`Error fetching bulletin ${tab.docId}`);
+          this.loadedBulletin = null;
+          this.isLoading = false;
+        },
       });
     } else {
-      this.documentsService
-        .getPrescriptionById(tab.docId)
-        .subscribe((fresh) => {
+      this.documentsService.getPrescriptionById(tab.docId).subscribe({
+        next: (fresh) => {
           this.loadedPrescription = fresh;
-        });
+          this.loadedBulletin = null;
+          this.isLoading = false;
+        },
+        error: (_) => {
+          console.error(`Error fetching prescription ${tab.docId}`);
+          this.loadedPrescription = null;
+          this.isLoading = false;
+        },
+      });
     }
   }
 }

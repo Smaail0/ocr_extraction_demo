@@ -4,11 +4,12 @@ import { Observable } from 'rxjs';
 import { Courier } from '../models/courier.model';
 import { Prescription } from '../models/prescription.model';
 import { Bulletin } from '../models/bulletin.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class CourierService {
   // point at the /api root
-  private apiUrl = 'http://localhost:8000/api';
+  private apiUrl = environment.apiBaseUrl;
 
   constructor(private http: HttpClient) {}
 

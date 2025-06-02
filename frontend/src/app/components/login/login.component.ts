@@ -1,11 +1,11 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule }      from '@angular/common';
-import { RouterModule, Router }      from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { RouterModule, Router } from '@angular/router';
 import {
   FormBuilder,
   FormGroup,
   Validators,
-  ReactiveFormsModule
+  ReactiveFormsModule,
 } from '@angular/forms';
 
 import { AuthService } from '../../services/auth.service';
@@ -13,13 +13,9 @@ import { AuthService } from '../../services/auth.service';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    RouterModule
-  ],
+  imports: [CommonModule, ReactiveFormsModule, RouterModule],
   templateUrl: './login.component.html',
-  styleUrls: ['./login.component.css']
+  styleUrls: ['./login.component.css'],
 })
 export class LoginComponent implements OnInit {
   loginForm!: FormGroup;
@@ -36,8 +32,8 @@ export class LoginComponent implements OnInit {
 
   ngOnInit(): void {
     this.loginForm = this.fb.group({
-      email:    ['', [Validators.required, Validators.email]],
-      password: ['', [Validators.required]]
+      email: ['', [Validators.required, Validators.email]],
+      password: ['', [Validators.required]],
     });
   }
 
@@ -45,7 +41,12 @@ export class LoginComponent implements OnInit {
     this.showPassword = !this.showPassword;
   }
 
-onSubmit(): void {
+  onForgotPassword(event: Event) {
+    event.preventDefault();
+    this.errorMsg = "Veuillez contacter l'administrateur";
+  }
+
+  onSubmit(): void {
     if (this.loginForm.invalid) return;
 
     this.loading = true;
@@ -54,18 +55,19 @@ onSubmit(): void {
     const { email, password } = this.loginForm.value;
 
     this.auth.login(email, password).subscribe({
-      next: tokenRes => {
+      next: (tokenRes) => {
         // Store JWT however you prefer:
         localStorage.setItem('access_token', tokenRes.access_token);
         // Then navigate to your dashboard or home page:
         this.router.navigate(['/admin']);
       },
-      error: err => {
+      error: (err) => {
         this.loading = false;
-        this.errorMsg = err.status === 401
-          ? 'Email or password incorrect'
-          : 'Login failed, please try again';
-      }
+        this.errorMsg =
+          err.status === 401
+            ? 'Email or password incorrect'
+            : 'Login failed, please try again';
+      },
     });
   }
 }

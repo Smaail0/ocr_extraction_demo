@@ -3,6 +3,7 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Observable }             from 'rxjs';
 import { Router}                from '@angular/router';
 import { User, UserCreate, UserUpdate } from '../models/user.model';
+import { environment } from '../../environments/environment';
 
 interface TokenPayload {
   sub: string;
@@ -17,7 +18,7 @@ export interface TokenResponse {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-    private url = 'http://localhost:8000/login';
+    private url = environment.authUrl;
     private tokenKey = 'access_token';
 
   constructor(
