@@ -10,7 +10,7 @@ import re
 import numpy as np
 import pandas as pd
 from rapidfuzz import process, fuzz
-from pdf2image import convert_from_path
+from pdf2image import convert_from_path, convert_from_bytes
 from dotenv import load_dotenv, find_dotenv
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
@@ -31,7 +31,12 @@ KEY = os.getenv("DOCUMENT_INTELLIGENCE_API_KEY")
 if not (ENDPOINT and KEY):
     raise SystemExit("Set DOCUMENT_INTELLIGENCE_ENDPOINT & DOCUMENT_INTELLIGENCE_API_KEY in .env")
 
-_SYNC_CLIENT = SyncDocumentClient(ENDPOINT, AzureKeyCredential(KEY))
+_AZURE_CLIENT: Optional[AsyncDocumentClient] = None
+async def get_azure_client() -> AsyncDocumentClient:
+    global _AZURE_CLIENT
+    if _AZURE_CLIENT is None:
+        _AZURE_CLIENT = AsyncDocumentClient(ENDPOINT, AzureKeyCredential(KEY))
+    return _AZURE_CLIENT
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 amm_path = os.path.join(current_dir, "liste_amm.xls")
@@ -64,23 +69,19 @@ def analyze_document(scan_path: Path, model_id: str, pages: List[str] | None = N
 def normalize_date(raw: str) -> Optional[str]:
     if not raw:
         return None
-    # 1) strip out “Le”, line-breaks, extra text
     s = raw.replace("Le", "").replace("\n", " ").strip()
-    # 2) look for day, month, year in any of these separators
     m = re.search(r"(\d{1,2})[\/\.\-\s]+(\d{1,2})[\/\.\-\s]+(\d{2,4})", s)
     if not m:
         return None
     day, month, year = m.groups()
-    # 3) normalize two-digit years (assume 20xx)
     if len(year) == 2:
         year = "20" + year
-    # 4) zero-pad day/month and build ISO string
     try:
         dt = datetime(int(year), int(month), int(day))
-        return dt.date().isoformat()   # “2022-01-03”
+        return dt.date().isoformat()
     except ValueError:
         return None
-
+    
 def split_and_correct(raw: str, med_ref: pd.DataFrame, threshold: int = 90):
     # 1) split into plausible segments
     segments = re.split(r"\d+\)\s*|\n+|[,;]\s*|/\s*(?=[A-Za-z])", raw)
@@ -227,9 +228,7 @@ def classify_form(
     return best[0]
 
 def format_prescription_id(raw: str) -> str:
-    # 1) strip everything but digits
     digits = re.sub(r"\D+", "", raw or "")
-    # 2) slice into exactly five parts:
     parts = [
         digits[0:4],
         digits[4:8],
@@ -237,131 +236,182 @@ def format_prescription_id(raw: str) -> str:
         digits[10:11],
         digits[11:12],
     ]
-    # 3) replace any empty slice with "0"
     parts = [p if p else "0" for p in parts]
     return "-".join(parts)
 
-def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> dict:
-    tmp_path: Optional[Path] = None
+def extract_grid(tbl) -> List[List[str]]:
+    grid = [[""] * tbl.column_count for _ in range(tbl.row_count)]
+    for cell in tbl.cells:
+        grid[cell.row_index][cell.column_index] = cell.content.strip()
+    return grid
+
+def table_to_objects(grid: List[List[str]], cols: List[str]) -> List[Dict[str,str]]:
+    out: List[Dict[str,str]] = []
+    for row in grid[1:]:
+        obj = { cols[i]: row[i] if i < len(row) else "" for i in range(len(cols)) }
+        out.append(obj)
+    return out
+
+def _parse_bulletin_tables_and_fields(
+    flds: Dict[str, Dict],
+    tables: List,
+) -> Dict[str, object]:
+    """
+    Synchronous helper to:
+    - Verify at least one table
+    - Convert each of the 8 tables into arrays of objects
+    - Extract all simple fields (txt/chk)
+    """
+    # 1) Guard: must have at least one table
+    if not tables or len(tables) == 0:
+        raise ValueError("OCR returned no tables; this doesn’t look like a Bulletin de soin.")
+
+    # 2) Prepare txt() and chk() helpers
+    def txt(k: str) -> str:
+        fld = flds.get(k)
+        return (fld.get("valueString") or fld.get("content") or "").strip() if fld else ""
+
+    def chk(k: str) -> bool:
+        fld = flds.get(k)
+        return (fld.get("valueSelectionMark", "").lower() == "selected") if fld else False
+
+    # 3) Extract & pad grids
+    grids = [extract_grid(tbl) for tbl in tables]
+    while len(grids) < 8:
+        grids.append([[]])
+
+    # 4) Map each of the 8 tables
+    consultations_dentaires = table_to_objects(
+        grids[0],
+        ["date","dent","codeActe","cotation","honoraires","codePs","signature"]
+    )
+    protheses_dentaires     = table_to_objects(
+        grids[1],
+        ["date","dents","codeActe","cotation","honoraires","codePs","signature"]
+    )
+    consultations_visites   = table_to_objects(
+        grids[2],
+        ["date","designation","honoraires","codePs","signature"]
+    )
+    actes_medicaux          = table_to_objects(
+        grids[3],
+        ["date","designation","honoraires","codePs","signature"]
+    )
+    actes_paramed           = table_to_objects(
+        grids[4],
+        ["date","designation","honoraires","codePs","signature"]
+    )
+    biologie                = table_to_objects(
+        grids[5],
+        ["date","montant","codePs","signature"]
+    )
+    hospitalisation         = table_to_objects(
+        grids[6],
+        ["date","codeHosp","forfait","codeClinique","signature"]
+    )
+    pharmacie               = table_to_objects(
+        grids[7],
+        ["date","montant","codePs","signature"]
+    )
+
+    # 5) Extract other fields & checkboxes
+    dossier_id   = txt("id_dossier") or ""
+    formatted_id = format_prescription_id(txt("id_unique") or "")
+
+    prenom  = txt("prenom_assure") or ""
+    nom     = txt("nom_assure")     or ""
+    adresse = txt("adresse_assure") or ""
+    code_po = txt("code_postal")    or ""
+    cnrps_c = chk("cnrps_check")
+    cnss_c  = chk("cnss_check")
+    conv_c  = chk("convention_check")
+
+    mal_prenom = txt("prenom_malade") or ""
+    mal_nom    = txt("nom_malade")    or ""
+    mal_birth  = txt("date_naissance_malade") or ""
+    nom_pr_mal = txt("nom_prenom_malade")    or ""
+    date_prevu = txt("date_prevu")           or ""
+
+    apci_c        = chk("apci_check")
+    mo_c          = chk("mo_check")
+    hosp_req_c    = chk("hospitalisation_check")
+    suivi_gross_c = chk("suivi_grossesse_check")
+    conjoint_c    = chk("conjoint")
+    ascendant_c   = chk("ascendant")
+    assure_soc    = cnrps_c or cnss_c
+
+    # 6) Assemble everything into a dict
+    return {
+        "prenom":               prenom,
+        "nom":                  nom,
+        "adresse":              adresse,
+        "codePostal":           code_po,
+        "refDossier":           dossier_id,
+        "identifiantUnique":    formatted_id,
+        "cnrps":                cnrps_c,
+        "cnss":                 cnss_c,
+        "convbi":               conv_c,
+        "prenomMalade":         mal_prenom,
+        "nomMalade":            mal_nom,
+        "dateNaissance":        mal_birth,
+        "numTel":               txt("telephone") or "",
+        "assureSocial":         assure_soc,
+        "conjoint":             conjoint_c,
+        "ascendant":            ascendant_c,
+        "enfant":               chk("enfant"),
+        "apci":                 apci_c,
+        "mo":                   mo_c,
+        "hosp":                 hosp_req_c,
+        "grossesse":            suivi_gross_c,
+
+        "consultationsDentaires":    consultations_dentaires,
+        "prothesesDentaires":        protheses_dentaires,
+        "consultationsVisites":      consultations_visites,
+        "actesMedicaux":             actes_medicaux,
+        "actesParamed":              actes_paramed,
+        "biologie":                  biologie,
+        "hospitalisation":           hospitalisation,
+        "pharmacie":                 pharmacie,
+    }
+
+async def parse_bulletin_ocr(file_bytes: bytes, filename: str) -> Dict:
+    logger.info(f"[parse_bulletin_ocr] start {filename}")
+    t0 = datetime.utcnow()
+
     try:
-        # 1) dump bytes to disk
-        suffix = Path(filename).suffix or ".pdf"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
+        client = await get_azure_client()
 
-        # 2) call Azure
-        model_id = os.getenv("BULLETIN_MODEL_ID")
-        result   = analyze_document(tmp_path, model_id=model_id, pages=None)
-        doc      = result.documents[0]
-        f        = doc.fields
-        tables   = result.tables
+        if not model_id:
+            raise ValueError("BULLETIN_MODEL_ID is not set in the environment")
 
-        # 3) guard: must have at least one table (or ≥8 if you require full grids)
-        if len(tables) == 0:
-            raise ValueError("OCR returned no tables; this doesn’t look like a Bulletin de soin.")
+        # 1) Send bytes directly to Azure
+        poller = await client.begin_analyze_document(
+            model_id=os.getenv("BULLETIN_MODEL_ID"),
+            body=file_bytes
+        )
+        result = await asyncio.wait_for(poller.result(), timeout=60)
+        elapsed_azure = (datetime.utcnow() - t0).total_seconds()
+        logger.info(f"[parse_bulletin_ocr] Azure returned in {elapsed_azure:.1f}s")
 
-        # 4) helpers
-        def txt(k: str) -> Optional[str]:
-            fld = f.get(k)
-            return fld and (fld.get("valueString") or fld.get("content"))
+        # 2) Extract fields + tables
+        doc    = result.documents[0]
+        flds   = doc.fields
+        tables = result.tables
 
-        def chk(k: str) -> bool:
-            fld = f.get(k)
-            return (fld.get("valueSelectionMark","").lower() == "selected") if fld else False
+        # 3) Offload all table‐and‐field parsing into a thread
+        parsed_data = await asyncio.to_thread(_parse_bulletin_tables_and_fields, flds, tables)
 
-        def extract_grid(tbl) -> List[List[str]]:
-            grid = [[""] * tbl.column_count for _ in range(tbl.row_count)]
-            for cell in tbl.cells:
-                grid[cell.row_index][cell.column_index] = cell.content.strip()
-            return grid
+        # 4) Merge with the header
+        output = {"header": {"documentType": "bulletin_de_soin"}}
+        output.update(parsed_data)
 
-        def table_to_objects(grid: List[List[str]], cols: List[str]) -> List[Dict[str,str]]:
-            out: List[Dict[str,str]] = []
-            for row in grid[1:]:
-                obj = { cols[i]: row[i] if i < len(row) else "" for i in range(len(cols)) }
-                out.append(obj)
-            return out
+        elapsed_total = (datetime.utcnow() - t0).total_seconds()
+        logger.info(f"[parse_bulletin_ocr] completed in {elapsed_total:.1f}s")
+        return output
 
-        # 5) extract & pad grids
-        grids = [extract_grid(tbl) for tbl in tables]
-        while len(grids) < 8:
-            grids.append([[]])   # or `[[""] * len(cols)]` if you prefer
-
-        # 6) map each of the 8 tables
-        consultations_dentaires = table_to_objects(grids[0], ["date","dent","codeActe","cotation","honoraires","codePs","signature"])
-        protheses_dentaires     = table_to_objects(grids[1], ["date","dents","codeActe","cotation","honoraires","codePs","signature"])
-        consultations_visites   = table_to_objects(grids[2], ["date","designation","honoraires","codePs","signature"])
-        actes_medicaux          = table_to_objects(grids[3], ["date","designation","honoraires","codePs","signature"])
-        actes_paramed           = table_to_objects(grids[4], ["date","designation","honoraires","codePs","signature"])
-        biologie                = table_to_objects(grids[5], ["date","montant","codePs","signature"])
-        hospitalisation         = table_to_objects(grids[6], ["date","codeHosp","forfait","codeClinique","signature"])
-        pharmacie               = table_to_objects(grids[7], ["date","montant","codePs","signature"])
-
-        # ── 7) other fields & checks ───────────────────────────────────
-        dossier_id   = txt("id_dossier") or ""
-        formatted_id = format_prescription_id(txt("id_unique") or "")
-
-        prenom  = txt("prenom_assure") or ""
-        nom     = txt("nom_assure")     or ""
-        adresse = txt("adresse_assure") or ""
-        code_po = txt("code_postal")    or ""
-        cnrps_c = chk("cnrps_check")
-        cnss_c  = chk("cnss_check")
-        conv_c  = chk("convention_check")
-
-        mal_prenom = txt("prenom_malade") or ""
-        mal_nom    = txt("nom_malade")    or ""
-        mal_birth  = txt("date_naissance_malade") or ""
-        nom_pr_mal = txt("nom_prenom_malade")    or ""
-        date_prevu = txt("date_prevu")           or ""
-
-        apci_c        = chk("apci_check")
-        mo_c          = chk("mo_check")
-        hosp_req_c    = chk("hospitalisation_check")
-        suivi_gross_c = chk("suivi_grossesse_check")
-        conjoint_c    = chk("conjoint")
-        ascendant_c   = chk("ascendant")
-        assure_soc    = cnrps_c or cnss_c
-
-        # ── 8) assemble final dict ─────────────────────────────────────
-        return {
-            "header": {"documentType": "bulletin_de_soin"},
-            "prenom": prenom,
-            "nom": nom,
-            "adresse": adresse,
-            "codePostal": code_po,
-            "refDossier": dossier_id,
-            "identifiantUnique": formatted_id,
-            "cnrps": cnrps_c,
-            "cnss": cnss_c,
-            "convbi": conv_c,
-            "prenomMalade": mal_prenom,
-            "nomMalade": mal_nom,
-            "dateNaissance": mal_birth,
-            "numTel": txt("telephone") or "",
-            "assureSocial": assure_soc,
-            "conjoint": chk("conjoint"),
-            "ascendant": chk("ascendant"),
-            "enfant": chk("enfant"),
-            "apci": chk("apci_check"),
-            "mo": chk("mo_check"),
-            "hosp": chk("hospitalisation_check"),
-            "grossesse": chk("suivi_grossesse_check"),
-            # **and**:
-            "consultationsDentaires": consultations_dentaires,
-            "prothesesDentaires":     protheses_dentaires,
-            "consultationsVisites":   consultations_visites,
-            "actesMedicaux":          actes_medicaux,
-            "actesParamed":           actes_paramed,
-            "biologie":               biologie,
-            "hospitalisation":        hospitalisation,
-            "pharmacie":              pharmacie,
-            }
-
-    finally:
-        if tmp_path and tmp_path.exists():
-            tmp_path.unlink()
+    except Exception as e:
+        logger.exception(f"[parse_bulletin_ocr] unexpected error for {filename}: {e}")
+        raise
 
 def extract_all_tables(result) -> List[List[List[str]]]:
     """
@@ -401,97 +451,55 @@ def _fmt_fr(n: float, decimals: int = 3) -> str:
     # swap decimal point to comma
     return f"{int_part},{frac_part}"
 
-async def parse_prescription_ocr(file_bytes: bytes, filename: str) -> Dict:
-    logger.info(f"[parse_prescription_ocr] start {filename}")
-    t0 = datetime.utcnow()
-    tmp_path: Optional[Path] = None
+def _parse_tables_and_legacy(tables) -> tuple[List[Dict], str]:
+    """
+    Returns (items, total) by looking at the 8-col and 5-col tables.
+    """
+    def extract_grid(tbl):
+        mat = [[""] * tbl.column_count for _ in range(tbl.row_count)]
+        for cell in tbl.cells:
+            mat[cell.row_index][cell.column_index] = cell.content.strip()
+        return mat
 
-    try:
-        # ── 1) dump bytes to temp file ───────────────────────────────
-        logger.debug("Writing bytes to temporary file")
-        suffix = Path(filename).suffix or ".pdf"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
-        logger.info(f"[parse_prescription_ocr] temp file at {tmp_path}")
+    matrices = [(tbl.column_count, extract_grid(tbl)) for tbl in tables]
 
-        # ── 2) call Azure async client ───────────────────────────────
-        logger.debug("Creating AsyncDocumentClient")
-        async with AsyncDocumentClient(ENDPOINT, AzureKeyCredential(KEY)) as client:
-            try:
-                logger.info(f"[parse_prescription_ocr] sending to Azure (model_id={model_id})")
-                poller = await client.begin_analyze_document(
-                    model_id=model_id,
-                    body=file_bytes
-                )
-                logger.debug("Awaiting Azure result")
-                result = await asyncio.wait_for(poller.result(), timeout=60)
-                elapsed = (datetime.utcnow() - t0).total_seconds()
-                logger.info(f"[parse_prescription_ocr] Azure returned in {elapsed:.1f}s")
-            except AzureError as e:
-                logger.error("Azure Document Intelligence error: %s", e, exc_info=True)
-                raise ValueError(f"Azure error during analysis: {e}")
-            except asyncio.TimeoutError:
-                logger.error("Azure Document Intelligence timed out after 60s")
-                raise ValueError("Azure analysis timed out (60s)")
+    items = []
+    total = ""
+    # 8-col table
+    items_mat = next((m for c, m in matrices if c >= 8), None)
+    if items_mat and len(items_mat) > 1:
+        for row in items_mat[1:-1]:
+            cells = (row + [""] * 8)[:8]
+            items.append({
+                "codePCT":      cells[0].strip(),
+                "produit":      cells[1].strip(),
+                "forme":        cells[2].strip(),
+                "qte":          cells[3].strip(),
+                "puv":          cells[4].strip(),
+                "montantPercu": cells[5].strip(),
+                "nio":          cells[6].strip(),
+                "prLot":        cells[7].strip(),
+            })
+        footer = items_mat[-1]
+        if footer and footer[0].lower().startswith("total"):
+            total = footer[0].strip()
 
-        # ── 3) extract fields + tables ────────────────────────────────
-        doc    = result.documents[0]
-        flds   = doc.fields
-        tables = result.tables
-
-        def txt(key: str) -> str:
-            fld = flds.get(key)
-            return (fld.get("valueString") or fld.get("content") or "").strip() if fld else ""
-
-        def chk(key: str) -> bool:
-            fld = flds.get(key)
-            return str(fld.get("valueSelectionMark","")).lower()=="selected" if fld else False
-
-        def extract_grid(tbl) -> List[List[str]]:
-            mat = [[""] * tbl.column_count for _ in range(tbl.row_count)]
-            for cell in tbl.cells:
-                mat[cell.row_index][cell.column_index] = cell.content.strip()
-            return mat
-
-        # ── 4) locate your three table shapes ────────────────────────
-        matrices = [(tbl.column_count, extract_grid(tbl)) for tbl in tables]
-        items_mat  = next((m for c,m in matrices if c >= 8), None)
-        legacy_mat = next((m for c,m in matrices if c == 5), None)
-        meta_mat   = next((m for c,m in matrices if c == 2), None)
-
-        # ── 5) primary items parse ───────────────────────────────────
-        items: List[Dict] = []
-        total: str = ""
-        if items_mat and len(items_mat) > 1:
-            logger.debug("Parsing standard 8-col items table")
-            for row in items_mat[1:-1]:
-                cells = (row + [""] * 8)[:8]
-                items.append({
-                    "codePCT":      cells[0].strip(),
-                    "produit":      cells[1].strip(),
-                    "forme":        cells[2].strip(),
-                    "qte":          cells[3].strip(),
-                    "puv":          cells[4].strip(),
-                    "montantPercu": cells[5].strip(),
-                    "nio":          cells[6].strip(),
-                    "prLot":        cells[7].strip(),
-                })
-            footer = items_mat[-1]
-            if footer and footer[0].lower().startswith("total"):
-                total = footer[0].strip()
-
-        # ── 6) legacy fallback ────────────────────────────────────────
-        if not items and legacy_mat and len(legacy_mat) > 1:
-            logger.debug("Parsing legacy 5-col items table")
+    # Fallback 5-col table if no items yet
+    if not items:
+        legacy_mat = next((m for c, m in matrices if c == 5), None)
+        if legacy_mat and len(legacy_mat) > 1:
             for row in legacy_mat[1:]:
-                a,b,c,d,*_ = (row + [""]*5)[:5]
-                puv = re.sub(r"[^\d\.,]","", c.strip())
-                qte = re.sub(r"\D","",      d.strip())
-                try: puv_n = float(puv.replace(",","."))
-                except: puv_n = 0.0
-                try: qte_n = int(qte)
-                except: qte_n = 0
+                a, b, c, d, *_ = (row + [""] * 5)[:5]
+                puv = re.sub(r"[^\d\.,]", "", c.strip())
+                qte = re.sub(r"\D", "", d.strip())
+                try:
+                    puv_n = float(puv.replace(",", "."))
+                except:
+                    puv_n = 0.0
+                try:
+                    qte_n = int(qte)
+                except:
+                    qte_n = 0
                 line_total = puv_n * qte_n
                 items.append({
                     "codePCT":      a.strip(),
@@ -506,137 +514,198 @@ async def parse_prescription_ocr(file_bytes: bytes, filename: str) -> Dict:
             if not total:
                 valid_amounts = []
                 for it in items:
-                    raw_val = it.get("montantPercu", "").strip()
-                    raw_val = raw_val.replace("\u00A0", "").replace(",", "")
+                    raw_val = it.get("montantPercu", "").strip().replace("\u00A0", "").replace(",", "")
                     if raw_val:
                         try:
                             valid_amounts.append(float(raw_val))
-                        except ValueError:
+                        except:
                             pass
                 total = f"{sum(valid_amounts):,.0f}" if valid_amounts else ""
 
-        # ── clear blank rows ─────────────────────────────────────────
-        if all(not it["produit"] for it in items):
-            logger.debug("All parsed items blank, clearing items")
-            items = []
+    # If all rows are blank, return empty
+    if items and all(not it["produit"] for it in items):
+        items = []
 
-        # ── 7) metadata parse ────────────────────────────────────────
-        beneficiaryId = patientIdentity = prescriberCode = None
-        prescriptionDate = regimen = dispensationDate = None
-        if meta_mat:
-            for kcell, vcell in meta_mat:
-                key = kcell.strip().lower()
-                val = vcell.strip()
-                if "bénéficiaire" in key:
-                    beneficiaryId = val
-                elif "identité" in key and "malade" in key:
-                    patientIdentity = val
-                elif "prescripteur" in key:
-                    prescriberCode = val
-                elif "date de la prescription" in key:
-                    prescriptionDate = val or prescriptionDate
-                elif "date de dispensation" in key:
-                    dispensationDate = val or dispensationDate
-                elif "régime" in key:
-                    regimen = val or regimen
+    return items, total
 
-        # ── 8) safe fallbacks ─────────────────────────────────────────
-        formatted_id     = format_prescription_id( beneficiaryId or txt("id_unique") )
-        patientIdentity  = patientIdentity or txt("nom_prenom")
-        prescriberCode   = prescriberCode  or txt("code_apci")
-        prescriptionDate = normalize_date(prescriptionDate) or txt("date")
-        dispensationDate = normalize_date(dispensationDate) or txt("date_numero")
-        regimen          = regimen or txt("regime")
+def _free_text_fallback(flds: Dict, med_ref: pd.DataFrame, cleaned_choices: List[str]) -> List[Dict]:
+    """
+    If no table items found, try fuzzy‐matching on the free‐text 'medicaments' field.
+    """
+    meds_text = ""
+    fld = flds.get("medicaments")
+    if fld:
+        meds_text = (fld.get("valueString") or fld.get("content") or "").strip()
 
-        # ── 9) free-text fallback ─────────────────────────────────────
-        if not items and txt("medicaments").strip():
-            meds = txt("medicaments")
-            logger.debug("Applying free-text fallback for meds")
-            corrected = process.extract(meds, cleaned_choices, scorer=fuzz.token_set_ratio, limit=10)
+    items = []
+    if meds_text:
+        # Split tokens by comma/semicolon/whitespace
+        tokens = [t.strip().lower() for t in re.split(r"[;,]+", meds_text) if t.strip()]
+        for token in tokens:
+            prefix = token[:2]
+            candidates = [c for c in cleaned_choices if c.lower().startswith(prefix)]
+            if not candidates:
+                continue
+            corrected = process.extract(token, candidates, scorer=fuzz.token_set_ratio, limit=5)
             for match, score, idx in corrected:
-                if score >= 80:
+                if score >= 85:
                     row = med_ref.iloc[idx]
                     items.append({
-                        "codePCT": "", 
+                        "codePCT": "",
                         "produit": choices[idx],
-                        "forme":   row["Forme"], 
+                        "forme":   row["Forme"],
                         "qte":     "",
                         "puv":     "",
                         "montantPercu": "",
                         "nio":     "",
                         "prLot":   "",
                     })
+    return items
 
-        # ── 10) final total fallback ──────────────────────────────────
-        total = total or txt("total_ttc")
+def _parse_metadata(flds: Dict) -> Dict[str, Optional[str]]:
+    """
+    Extract fields like beneficiaryId, patientIdentity, prescriberCode, dates, regimen.
+    """
+    beneficiaryId = patientIdentity = prescriberCode = None
+    prescriptionDate = regimen = dispensationDate = None
 
-        # ── 11) pharmacie block ──────────────────────────────────────
-        pharm_raw = txt("pharmacie")
-        parts     = re.split(r"Tél[:]? *", pharm_raw, 1)
-        main      = parts[0].strip()
-        contact   = parts[1] if len(parts) > 1 else ""
-        m         = re.search(r"\b(RTE|Route|Rue|Av|Avenue)\b", main, re.IGNORECASE)
-        if m:
-            pharm_name    = main[:m.start()].strip()
-            pharm_address = main[m.start():].strip()
-        elif " - " in main:
-            pharm_name, pharm_address = [p.strip() for p in main.split(" - ",1)]
-        else:
-            pharm_name, pharm_address = main, None
+    # Suppose the table of metadata has 2 columns: key‐cell, value‐cell
+    meta_mat = flds.get("metadata_table")  # or however you identify that table
+    if meta_mat:
+        for kcell, vcell in meta_mat:
+            key = kcell.strip().lower()
+            val = vcell.strip()
+            if "bénéficiaire" in key:
+                beneficiaryId = val
+            elif "identité" in key and "malade" in key:
+                patientIdentity = val
+            elif "prescripteur" in key:
+                prescriberCode = val
+            elif "date de la prescription" in key:
+                prescriptionDate = val or prescriptionDate
+            elif "date de dispensation" in key:
+                dispensationDate = val or dispensationDate
+            elif "régime" in key:
+                regimen = val or regimen
 
-        tel_m = re.search(r"^([\d\s]+)", contact)
-        fax_m = re.search(r"Fax[:]? *([\d\s]+)", contact, re.IGNORECASE)
-        pharm_contact = " / ".join(filter(None, [
-            tel_m and tel_m.group(1).strip(),
-            fax_m and fax_m.group(1).strip()
-        ])) or None
-        fisc_m        = re.search(r"Matricule\s+Fisc[^\w]*(\w+)", contact, re.IGNORECASE)
-        pharm_fiscal  = fisc_m.group(1).strip() if fisc_m else None
+    return {
+        "beneficiaryId":     beneficiaryId,
+        "patientIdentity":   patientIdentity,
+        "prescriberCode":    prescriberCode,
+        "prescriptionDate":  prescriptionDate,
+        "regimen":           regimen,
+        "dispensationDate":  dispensationDate
+    }
 
-        # ── 12) cropping signature ────────────────────────────────────
-        executor      = txt("executeur") or txt("info_medecin")
-        cnam_ref      = txt("ref_cnam")   or txt("code_cnam")
-        doc_name      = ""
+def _final_fallbacks(flds: Dict[str, Dict]) -> Dict[str, Optional[str]]:
+    """
+    Fill in beneficiaryId, patientIdentity, etc. directly from the flds dict.
+    """
+    def txt(key: str) -> str:
+        fld = flds.get(key)
+        return (fld.get("valueString") or fld.get("content") or "").strip() if fld else ""
+
+    beneficiaryId     = txt("id_unique")
+    patientIdentity   = txt("nom_prenom")
+    prescriberCode    = txt("code_apci")
+    prescriptionDate  = normalize_date(txt("date"))
+    dispensationDate  = normalize_date(txt("date_numero"))
+    regimen           = txt("regime")
+
+    return {
+        "formatted_id":      format_prescription_id(beneficiaryId),
+        "patientIdentity":   patientIdentity,
+        "prescriberCode":    prescriberCode,
+        "prescriptionDate":  prescriptionDate,
+        "dispensationDate":  dispensationDate,
+        "regimen":           regimen
+    }
+
+async def parse_prescription_ocr(file_bytes: bytes, filename: str) -> Dict:
+    logger.info(f"[parse_prescription_ocr] start {filename}")
+    t0 = datetime.utcnow()
+    tmp_path: Optional[Path] = None
+
+    try:
+        # ── 1) Write bytes to temp file ─────────────────────────────────
+        suffix = Path(filename).suffix or ".pdf"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = Path(tmp.name)
+        logger.info(f"[parse_prescription_ocr] temp file at {tmp_path}")
+
+        # ── 2) Call Azure’s analyze API ───────────────────────────────────
+        client = await get_azure_client()
+        poller = await client.begin_analyze_document(
+            model_id=model_id,
+            body=file_bytes
+        )
+        result = await asyncio.wait_for(poller.result(), timeout=60)
+        elapsed_azure = (datetime.utcnow() - t0).total_seconds()
+        logger.info(f"[parse_prescription_ocr] Azure returned in {elapsed_azure:.1f}s")
+
+        # ── 3) Pull out fields + tables ──────────────────────────────────
+        doc    = result.documents[0]
+        flds   = doc.fields
+        tables = result.tables
+
+        # ── 4) Parse “items” in background ──────────────────────────────
+        items_and_total_task = asyncio.to_thread(_parse_tables_and_legacy, tables)
+
+        # ── 5) If Azure found a signature region, run your old helpers ──
         sig_crop_file = None
+        doc_name      = ""
         if has_signature_coordinates(result):
             logger.debug("Cropping signature via thread")
-            doc_name   = await asyncio.to_thread(get_doctor_name, tmp_path, _SYNC_CLIENT, model_id)
-            crop       = await asyncio.to_thread(get_signature_crop, tmp_path)
-            sig_dir    = Path("signatures")
+            # 5a) get_doctor_name(tmp_path, _SYNC_CLIENT, model_id) runs in a sync thread
+            doc_name = await asyncio.to_thread(get_doctor_name, tmp_path, _AZURE_CLIENT, model_id)
+
+            # 5b) get_signature_crop(tmp_path) runs in a sync thread, returns a cv2 image (np.ndarray)
+            crop_img = await asyncio.to_thread(get_signature_crop, tmp_path)
+
+            # 5c) write out the PNG
+            sig_dir  = Path("signatures")
             sig_dir.mkdir(exist_ok=True)
-            sig_crop   = sig_dir / f"{doc_name}_signature.png"
-            cv2.imwrite(str(sig_crop), crop)
+            sig_crop = sig_dir / f"{doc_name}_signature.png"
+            cv2.imwrite(str(sig_crop), crop_img)
             sig_crop_file = str(sig_crop)
 
-        # ── 13) assemble output ──────────────────────────────────────
+        # ── 6) Await the items & total parsing ───────────────────────────
+        items, total = await items_and_total_task
+        if not items:
+            items = await asyncio.to_thread(_free_text_fallback, flds, med_ref, cleaned_choices)
+
+        # ── 7) Fill in all other metadata & assemble output ─────────────
+        final_meta = _final_fallbacks(flds)
+        def txt(key: str) -> str:
+            fld = flds.get(key)
+            return (fld.get("valueString") or fld.get("content") or "").strip() if fld else ""
+
         output = {
-            "header":            {"documentType":"prescription"},
-            "pharmacyName":      pharm_name,
-            "pharmacyAddress":   pharm_address,
-            "pharmacyContact":   pharm_contact,
-            "pharmacyFiscalId":  pharm_fiscal,
-            "beneficiaryId":     formatted_id,
-            "patientIdentity":   patientIdentity,
-            "prescriberCode":    prescriberCode,
-            "prescriptionDate":  prescriptionDate,
-            "regimen":           regimen,
-            "dispensationDate":  dispensationDate,
-            "executor":          executor,
-            "ref_cnam":          cnam_ref,
-            "nom_prenom_docteur":doc_name,
-            "items":             items,
-            "total":             total,
-            "signatureCropFile": sig_crop_file,
+            "header":             {"documentType": "prescription"},
+            "pharmacyName":       txt("pharmacie").split("Tél")[0].strip(),
+            "pharmacyAddress":    None,
+            "pharmacyContact":    None,
+            "pharmacyFiscalId":   None,
+            "beneficiaryId":      final_meta["formatted_id"],
+            "patientIdentity":    final_meta["patientIdentity"],
+            "prescriberCode":     final_meta["prescriberCode"],
+            "prescriptionDate":   final_meta["prescriptionDate"],
+            "regimen":            final_meta["regimen"],
+            "dispensationDate":   final_meta["dispensationDate"],
+            "executor":           txt("executeur") or txt("info_medecin"),
+            "ref_cnam":           txt("ref_cnam") or txt("code_cnam"),
+            "nom_prenom_docteur": doc_name,
+            "items":              items,
+            "total":              total or txt("total_ttc"),
+            "signatureCropFile":  sig_crop_file,
         }
 
-        elapsed = (datetime.utcnow() - t0).total_seconds()
-        logger.info(f"[parse_prescription_ocr] completed in {elapsed:.1f}s")
+        elapsed_total = (datetime.utcnow() - t0).total_seconds()
+        logger.info(f"[parse_prescription_ocr] completed in {elapsed_total:.1f}s")
         return output
 
-    except Exception:
-        logger.exception("[parse_prescription_ocr] unexpected error")
-        raise
     finally:
         if tmp_path and tmp_path.exists():
             tmp_path.unlink()
-            logger.debug(f"Removed temp file {tmp_path}")
+

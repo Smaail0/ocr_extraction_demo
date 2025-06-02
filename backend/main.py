@@ -251,7 +251,7 @@ def read_prescription(
 @app.post(
     "/api/courrier/upload",
     response_model=schemas.Courier,
-    summary="Créer un Courier et y attacher 1+ fichiers, en extrayant et sauvegardant immédiatement"
+    summary="Créer un Courier et y attacher 1+ fichiers, puis extraire et sauvegarder"
 )
 async def upload_courrier(
     mat_fiscale: str              = Form(...),
@@ -265,12 +265,12 @@ async def upload_courrier(
     2) Pour chaque fichier envoyé :
        a) Lit les bytes, écrit le fichier sur disque.
        b) Classifie (prescription vs bulletin) via Azure.
-       c) Parse le document (appel async à Azure + traitements).
+       c) Parse le document (pour prescription: async, pour bulletin: sync).
        d) Crée la ligne Prescription ou Bulletin en base et
           met à jour le FileUpload associé.
-    3) Renvoie le Courier (avec tous ses FileUpload + FK remplis).
+    3) Renvoie le Courier (avec tous ses FileUpload + relations).
     """
-    # ── 1) Créer le Courier de base ──────────────────────────────
+    # ── 1) Créer le Courier de base
     db_courier = models.Courier(
         mat_fiscale              = mat_fiscale,
         nom_complet_adherent     = nom_complet_adherent,
@@ -281,159 +281,120 @@ async def upload_courrier(
     db.commit()
     db.refresh(db_courier)
 
-    # ── 2) Pour chaque fichier uploadé ───────────────────────────
+    # ── 2) Pour chaque fichier uploadé
     for upload in files:
-        # ---- 2a) Lire bytes + stocker sur disque -----------------
         raw_bytes = await upload.read()
         if not raw_bytes or not upload.filename:
-            # Si pas de contenu, on l’ignore ou on lève une erreur
             raise HTTPException(status_code=400, detail=f"Fichier invalide : {upload.filename}")
 
-        # Générer un nom unique pour le fichier sur disque
-        ts      = datetime.utcnow().isoformat()
-        safe_ts = re.sub(r"[:.]", "-", ts)
-        stored  = f"{safe_ts}_{upload.filename}"
+        # 2a) Écrire sur disque
+        ts      = datetime.utcnow().isoformat().replace(":", "-").replace(".", "-")
+        stored  = f"{ts}_{upload.filename}"
         full_path = os.path.join(UPLOAD_DIR, stored)
-
-        # Écrire le fichier brut sur disque
         with open(full_path, "wb") as out_f:
             out_f.write(raw_bytes)
-
         size_bytes = os.path.getsize(full_path)
-        
-        # Créer d’abord un FileUpload temporaire (type="unknown") pour avoir l’ID
+
         db_file = models.FileUpload(
             filename      = stored,
             original_name = upload.filename,
             path          = full_path,
             size_in_bytes = size_bytes,
-            type          = "unknown",   # nous mettrons à jour après classification
+            type          = "unknown",
             courier_id    = db_courier.id
         )
         db.add(db_file)
         db.commit()
         db.refresh(db_file)
 
-        # ---- 2b) Classification Azure (prescription vs bulletin) ---
+        # 2b) Classification Azure (async)
         try:
             form_key = await classify_form_on_bytes(raw_bytes, upload.filename)
         except Exception as e:
-            # Si classification échoue, on marque l’erreur et continue
             db_file.type = "error"
-            db.add(db_file)
-            db.commit()
-            # (optionnel : lister une erreur dans la réponse finale, ou lever ici)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Impossible de classifier {upload.filename} : {str(e)}"
-            )
+            db.add(db_file); db.commit()
+            raise HTTPException(status_code=400, detail=f"Impossible de classifier {upload.filename}: {e}")
 
-        # Azure renvoie parfois "bulletin" ou "bulletin_de_soin", on normalise
-        if form_key.lower().startswith("bulletin"):
+        form_key_lc = form_key.lower()
+        if form_key_lc.startswith("bulletin"):
             form_key = "bulletin_de_soin"
-        elif form_key.lower().startswith("prescription"):
+        elif form_key_lc.startswith("prescription"):
             form_key = "prescription"
         else:
-            # classification inconnue
             db_file.type = "invalid"
-            db.add(db_file)
-            db.commit()
+            db.add(db_file); db.commit()
             raise HTTPException(
                 status_code=400,
                 detail=f"Type de document non reconnu pour {upload.filename}: {form_key}"
             )
 
-        # ---- 2c) Parsing avec Azure (appel async + extraction) ------
-        parsed: dict
+        # 2c) Parsing with Azure
         try:
             if form_key == "prescription":
+                # parse_prescription_ocr is async, so we await it
                 parsed = await parse_prescription_ocr(raw_bytes, upload.filename)
-            else:  # "bulletin_de_soin"
+            else:
+                # parse_bulletin_ocr is synchronous, so call it in a thread
                 parsed = await parse_bulletin_ocr(raw_bytes, upload.filename)
         except Exception as e:
-            # L’API Azure a échoué ou timeout :
             db_file.type = "error"
-            db.add(db_file)
-            db.commit()
-            raise HTTPException(
-                status_code=500,
-                detail=f"Échec du parsing {upload.filename}: {str(e)}"
-            )
+            db.add(db_file); db.commit()
+            raise HTTPException(status_code=500, detail=f"Échec du parsing {upload.filename}: {e}")
 
-        # ---- 2d) Enregistrer Prescription ou Bulletin en base -------
-        # parsed est un dict contenant un champ "header": {"documentType": "..."} plus tous les champs extraits.
-        header = parsed.get("header", {})
+        # 2d) Enregistrer Prescription ou Bulletin en base
+        header   = parsed.get("header", {})
         doc_type = header.get("documentType")
-
-        # On retire "header" du dict pour ne pas surcharger le modèle SQLAlchemy
         body_data = { k:v for k,v in parsed.items() if k != "header" }
 
         if doc_type == "prescription":
+            # On renomme ref_cnam → pharmacistCnamRef
             cnam_val = body_data.pop("ref_cnam", None)
             if cnam_val:
                 body_data["pharmacistCnamRef"] = cnam_val
-            # Créer une Prescription
+
             try:
                 db_presc = models.Prescription(**body_data)
                 db.add(db_presc)
                 db.commit()
                 db.refresh(db_presc)
 
-                # Mettre à jour le FileUpload pour lier la Prescription
                 db_file.type = "prescription"
                 db_file.prescription_id = db_presc.id
                 db.add(db_file)
                 db.commit()
             except Exception as e:
-                # Si insertion échoue, on marque error
                 db_file.type = "error"
-                db.add(db_file)
-                db.commit()
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Impossible de sauver la prescription en base : {str(e)}"
-                )
+                db.add(db_file); db.commit()
+                raise HTTPException(status_code=500, detail=f"Impossible de sauver la prescription en base : {e}")
 
         elif doc_type == "bulletin_de_soin":
-            # Créer un Bulletin
             try:
                 db_bull = models.Bulletin(**body_data)
                 db.add(db_bull)
                 db.commit()
                 db.refresh(db_bull)
 
-                # Mettre à jour le FileUpload pour lier le Bulletin
                 db_file.type = "bulletin"
                 db_file.bulletin_id = db_bull.id
                 db.add(db_file)
                 db.commit()
             except Exception as e:
                 db_file.type = "error"
-                db.add(db_file)
-                db.commit()
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Impossible de sauver le bulletin en base : {str(e)}"
-                )
+                db.add(db_file); db.commit()
+                raise HTTPException(status_code=500, detail=f"Impossible de sauver le bulletin en base : {e}")
 
         else:
-            # En principe on ne devrait jamais arriver ici
             db_file.type = "invalid"
-            db.add(db_file)
-            db.commit()
-            raise HTTPException(
-                status_code=400,
-                detail=f"Type inattendu pour le parsing : {doc_type}"
-            )
+            db.add(db_file); db.commit()
+            raise HTTPException(status_code=400, detail=f"Type inattendu ({doc_type}) pour {upload.filename}")
 
-    # ── 3) Recharger le Courier AVEC ses associations (files, prescriptions, bulletins) ──
+    # ── 3) Recharger le Courier avec ses FileUpload et relations, puis retourner
     courier_with_files = (
         db.query(models.Courier)
           .options(joinedload(models.Courier.files))
           .filter(models.Courier.id == db_courier.id)
           .first()
     )
-
     return courier_with_files
 
 @app.post(
