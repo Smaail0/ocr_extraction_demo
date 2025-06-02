@@ -48,7 +48,7 @@ export class UploadDocComponent {
   isUploading = false;
   serverError: string | null = null;
 
-  readonly MAX_FILES = 1;
+  readonly MAX_FILES = 5;
   readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
   constructor(
@@ -67,7 +67,7 @@ export class UploadDocComponent {
 
   get isSubmitDisabled() {
     return (
-      this.uploadFiles.length !== this.MAX_FILES ||
+      this.uploadFiles.length == this.MAX_FILES || this.uploadFiles.length === 0 ||
       !this.formData.matFisc ||
       !this.formData.nomAdhe ||
       !this.formData.nomBenef ||
