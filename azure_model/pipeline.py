@@ -16,7 +16,11 @@ from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.aio import DocumentIntelligenceClient as AsyncDocumentClient
 from azure.ai.documentintelligence import DocumentIntelligenceClient as SyncDocumentClient
+from backend.services.azure_client import get_azure_client
 import asyncio
+import ssl
+import certifi
+from azure.core.pipeline.transport import AioHttpTransport
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import AzureError
 from datetime import datetime
@@ -31,12 +35,8 @@ KEY = os.getenv("DOCUMENT_INTELLIGENCE_API_KEY")
 if not (ENDPOINT and KEY):
     raise SystemExit("Set DOCUMENT_INTELLIGENCE_ENDPOINT & DOCUMENT_INTELLIGENCE_API_KEY in .env")
 
-_AZURE_CLIENT: Optional[AsyncDocumentClient] = None
-async def get_azure_client() -> AsyncDocumentClient:
-    global _AZURE_CLIENT
-    if _AZURE_CLIENT is None:
-        _AZURE_CLIENT = AsyncDocumentClient(ENDPOINT, AzureKeyCredential(KEY))
-    return _AZURE_CLIENT
+
+_AZURE_CLIENT = get_azure_client()
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 amm_path = os.path.join(current_dir, "liste_amm.xls")
@@ -49,22 +49,22 @@ med_ref = pd.read_excel(
 choices = med_ref["Nom"].dropna().tolist()
 cleaned_choices = [ re.sub(r"\W+", "", c.lower()) for c in choices ]
 
-client = DocumentIntelligenceClient(ENDPOINT, AzureKeyCredential(KEY))
 model_id = os.getenv("ORDONNANCE_MODEL_ID")
 
 def analyze_document(scan_path: Path, model_id: str, pages: List[str] | None = None):
+    sync_client = SyncDocumentClient(endpoint=ENDPOINT, credential=AzureKeyCredential(KEY))
     with open(scan_path, "rb") as f:
-        poller = client.begin_analyze_document(
+        poller = sync_client.begin_analyze_document(
             model_id=model_id,
             body=f,
             pages=pages
         )
     try:
-        # give up after 60s
         return poller.result(timeout=60)
     except Exception as e:
         logger.error(f"[analyze_document] Azure call failed or timed-out: {e}", exc_info=True)
         raise
+
 
 def normalize_date(raw: str) -> Optional[str]:
     if not raw:

@@ -21,11 +21,14 @@ from .database import engine, SessionLocal
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from .services.azure import classify_form_on_bytes, parse_bulletin_ocr, parse_prescription_ocr
-from azure_model.pipeline import client as azure_client, model_id as azure_model_id, classify_form
+from azure_model.pipeline import model_id as azure_model_id, classify_form
+from .services.azure_client import get_azure_client
 from azure_model.signature_pipeline import get_signature_crop, get_doctor_name, verify_signature
 logger = logging.getLogger("uvicorn")
 import json
 from .services.diagnosis_service import get_probable_diagnoses_deepseek
+
+client = get_azure_client()
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -638,7 +641,7 @@ def is_mostly_empty(parsed: dict, threshold: float = 0.9) -> bool:
             empty_count += 1
     return (empty_count / len(keys)) >= threshold
 
-@app.post("/login", response_model=schemas.Token)
+@app.post("/api/login", response_model=schemas.Token)
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db:        Session = Depends(get_db)
